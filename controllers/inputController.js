@@ -5,9 +5,16 @@ const AppError = require("../utils/appError");
 const catchAsync = require("../utils/catchAsync");
 const { GOOGLE_MAPS_API_KEY } = require("../utils/config");
 
+const Product = require("../model/productModel");
+const Order = require("../model/orderModel");
+
 const client = new Client({});
 
-// Reading data from the first sheet of file
+/**
+ * Reads data from the first sheet of excel file and converts it to JSON
+ * @param {String} tempFilePath
+ * @returns {[Object]} Array of JSON object with keys being the first row.
+ */
 const readExcelFile = (tempFilePath) => {
   const file = reader.readFile(tempFilePath);
 
@@ -19,7 +26,11 @@ const readExcelFile = (tempFilePath) => {
   return data;
 };
 
-//Get geocode of Address using Google Maps API
+/**
+ * Converts Address to the GeoSpatial Coordinates using Google Geocoding API
+ * @param {String} address
+ * @returns {{status, result}} Returns status of the conversion along with geolocation information for the first result given by the Google Geocoding API
+ */
 const getGeocode = async (address) => {
   try {
     const args = {
@@ -43,6 +54,10 @@ const getGeocode = async (address) => {
   }
 };
 
+/**
+ * Converts the address from the order to the GeoSpatial Coordinates and appends the result to the order object
+ * @param {[Objects]} data
+ */
 const convertAddressToGeocode = async (data) => {
   try {
     await Promise.all(
@@ -67,7 +82,9 @@ const convertAddressToGeocode = async (data) => {
   }
 };
 
-//Expects a filename to be rawData
+/**
+ * Function to serve the HTTP request of taking the raw data as input and storing the orders information from an Excel sheet
+ */
 const inputDeliveryPoints = catchAsync(async (req, res, next) => {
   const file = req.files?.rawData;
 
@@ -88,6 +105,19 @@ const inputDeliveryPoints = catchAsync(async (req, res, next) => {
 
   await convertAddressToGeocode(data);
 
+  const newOrders = data.map((order) => {
+    return {
+      AWB: order.AWB,
+      names: order.names,
+      product: order.product_id,
+      address: order.address,
+      estimatedTime: new Date(),
+      location: order.location,
+    };
+  });
+
+  const orders = await Order.insertMany(newOrders);
+
   res.status(200).json({
     message: "Data read and address conversion Successful",
     results: data.length,
@@ -95,4 +125,39 @@ const inputDeliveryPoints = catchAsync(async (req, res, next) => {
   });
 });
 
-module.exports = { inputDeliveryPoints };
+/**
+ * Function to serve HTTP request of taking details of product and storing it to the Database.
+ */
+const inputProductDetails = catchAsync(async (req, res, next) => {
+  const product = req.body.product;
+
+  if (!product) {
+    return next(new AppError("Product not found", 400));
+  }
+
+  const { skuID, volume, deadWeight, length, breadth, height } = product;
+
+  if (!skuID || !volume || !deadWeight) {
+    return next(new AppError("All mandatory product details not present", 400));
+  }
+
+  const data = {
+    skuID,
+    volumetricWeight: volume,
+    deadWeight,
+    length,
+    breadth,
+    height,
+  };
+
+  const newProduct = await Product.create(data);
+
+  console.log({ newProduct });
+
+  res.status(201).json({
+    status: "success",
+    message: `Product details with SKU:${newProduct.skuID} inserted successfully`,
+  });
+});
+
+module.exports = { inputDeliveryPoints, inputProductDetails };
