@@ -1,5 +1,4 @@
 const mongoose = require("mongoose");
-const validator = require("validator");
 const orderSchema = new mongoose.Schema(
   {
     AWB: {
@@ -14,6 +13,11 @@ const orderSchema = new mongoose.Schema(
       type: String,
       required: [true, "Product SKU_ID must be provided for an order"],
     },
+    productID: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Product",
+      required: [true, "Product ID must be provided for an order"],
+    },
     estimatedTime: {
       type: Date,
       required: [true, "Estimated time must be provided for an order"],
@@ -25,6 +29,19 @@ const orderSchema = new mongoose.Schema(
     location: {
       lat: { type: Number },
       lng: { type: Number },
+    },
+    isDelivered: {
+      type: Boolean,
+      default: false,
+    },
+    type: {
+      type: String,
+      enum: ["delivery", "pickup"],
+      default: "delivery",
+    },
+    isFakeAttempt: {
+      type: Boolean,
+      default: false,
     },
   },
   {

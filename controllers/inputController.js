@@ -29,7 +29,8 @@ const readExcelFile = (tempFilePath) => {
 /**
  * Converts Address to the GeoSpatial Coordinates using Google Geocoding API
  * @param {String} address
- * @returns {{status, result}} Returns status of the conversion along with geolocation information for the first result given by the Google Geocoding API
+ * @returns {{status, result}} Returns status of the conversion along with geolocation information 
+ * for the first result given by the Google Geocoding API
  */
 const getGeocode = async (address) => {
   try {
@@ -38,6 +39,7 @@ const getGeocode = async (address) => {
         key: GOOGLE_MAPS_API_KEY,
         address: address,
         region: "IN",
+        //TODO: add filtering based on Bangalore Data
       },
     };
     const gcResponse = await client.geocode(args);
@@ -45,7 +47,16 @@ const getGeocode = async (address) => {
     const status = gcResponse.data.status;
     const firstResult = gcResponse.data.results[0];
 
-    return { status, result: firstResult };
+    const response = {
+      status,
+      result: {
+        inputAddress: address,
+        formattedAddress: firstResult.formatted_address,
+        location: firstResult.geometry.location,
+        locationType: firstResult.geometry.location_type,
+      },
+    };
+    return response;
   } catch (e) {
     throw new AppError(
       `Unable to retrive geocode of the address ${address}: ${e.message}`,
@@ -64,16 +75,30 @@ const convertAddressToGeocode = async (data) => {
       data.map(async (order) => {
         if (order.address) {
           const geocodeResponse = await getGeocode(order.address);
-
-          const details = {
-            inputAddress: order.address,
-            formattedAddress: geocodeResponse.result.formatted_address,
-            location: geocodeResponse.result.geometry.location,
-            locationType: geocodeResponse.result.geometry.location_type,
-          };
-          order.location = details.location;
+          order.location = geocodeResponse.result.location;
         } else {
           console.log(`Address not present in the order details ${order.AWB}`);
+        }
+      })
+    );
+  } catch (e) {
+    console.log(e.message);
+  }
+};
+
+/**
+ * Gets mongoose Product ID from the product SKU_ID from the order and appends the result to the order object
+ * @param {[Objects]} orders
+ */
+const getProductIDs = async (orders) => {
+  try {
+    await Promise.all(
+      orders.map(async (order) => {
+        if (order.product_id) {
+          const product = await Product.findOne({ skuID: order.product_id });
+          order.productID = product._id;
+        } else {
+          console.log(`Product ID is not in the order details ${order.AWB}`);
         }
       })
     );
@@ -105,13 +130,16 @@ const inputDeliveryPoints = catchAsync(async (req, res, next) => {
 
   await convertAddressToGeocode(data);
 
+  await getProductIDs(data);
+
   const newOrders = data.map((order) => {
     return {
       AWB: order.AWB,
       names: order.names,
       product: order.product_id,
+      productID: order.productID,
       address: order.address,
-      estimatedTime: new Date(),
+      estimatedTime: new Date(), // TODO: this should be the estimated time
       location: order.location,
     };
   });
@@ -121,7 +149,7 @@ const inputDeliveryPoints = catchAsync(async (req, res, next) => {
   res.status(200).json({
     message: "Data read and address conversion Successful",
     results: data.length,
-    data,
+    data: orders,
   });
 });
 
@@ -160,4 +188,4 @@ const inputProductDetails = catchAsync(async (req, res, next) => {
   });
 });
 
-module.exports = { inputDeliveryPoints, inputProductDetails };
+module.exports = { inputDeliveryPoints, inputProductDetails, getGeocode };

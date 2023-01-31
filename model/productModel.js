@@ -6,12 +6,24 @@ const productSchema = new mongoose.Schema(
       required: [true, "SKU_ID of the product is mandatory"],
       unique: true,
     },
-    name: { type: String },
-    deadWeight: { type: Number },
-    volumetricWeight: { type: Number },
-    length: { type: Number },
-    breadth: { type: Number },
-    height: { type: Number },
+    name: {
+      type: String,
+    },
+    deadWeight: {
+      type: Number,
+    },
+    volumetricWeight: {
+      type: Number,
+    },
+    length: {
+      type: Number,
+    },
+    breadth: {
+      type: Number,
+    },
+    height: {
+      type: Number,
+    },
   },
   {
     toJSON: { virtuals: true },
