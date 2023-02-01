@@ -1,14 +1,13 @@
 const reader = require("xlsx");
-const { Client } = require("@googlemaps/google-maps-services-js");
 
 const AppError = require("../utils/appError");
 const catchAsync = require("../utils/catchAsync");
-const { GOOGLE_MAPS_API_KEY } = require("../utils/config");
 
 const Product = require("../model/productModel");
 const Order = require("../model/orderModel");
+const Rider = require("../model/riderModel");
 
-const client = new Client({});
+const { getGeocode } = require("../utils/geocoding");
 
 /**
  * Reads data from the first sheet of excel file and converts it to JSON
@@ -24,45 +23,6 @@ const readExcelFile = (tempFilePath) => {
   const data = reader.utils.sheet_to_json(sheet);
 
   return data;
-};
-
-/**
- * Converts Address to the GeoSpatial Coordinates using Google Geocoding API
- * @param {String} address
- * @returns {{status, result}} Returns status of the conversion along with geolocation information 
- * for the first result given by the Google Geocoding API
- */
-const getGeocode = async (address) => {
-  try {
-    const args = {
-      params: {
-        key: GOOGLE_MAPS_API_KEY,
-        address: address,
-        region: "IN",
-        //TODO: add filtering based on Bangalore Data
-      },
-    };
-    const gcResponse = await client.geocode(args);
-
-    const status = gcResponse.data.status;
-    const firstResult = gcResponse.data.results[0];
-
-    const response = {
-      status,
-      result: {
-        inputAddress: address,
-        formattedAddress: firstResult.formatted_address,
-        location: firstResult.geometry.location,
-        locationType: firstResult.geometry.location_type,
-      },
-    };
-    return response;
-  } catch (e) {
-    throw new AppError(
-      `Unable to retrive geocode of the address ${address}: ${e.message}`,
-      e.statusCode
-    );
-  }
 };
 
 /**
@@ -188,4 +148,55 @@ const inputProductDetails = catchAsync(async (req, res, next) => {
   });
 });
 
-module.exports = { inputDeliveryPoints, inputProductDetails, getGeocode };
+const inputDummyProducts = catchAsync(async (req, res, next) => {
+  const file = req.files?.rawData;
+
+  if (!file) {
+    return next(new AppError("File not found", 400));
+  }
+
+  const acceptedFileMimeTypes = [
+    "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  ];
+
+  if (!acceptedFileMimeTypes.includes(file.mimetype)) {
+    return next(new AppError("Please select an Excel File", 400));
+  }
+
+  const data = readExcelFile(file.tempFilePath);
+
+  await Product.insertMany(data);
+
+  res.status(200).json({ message: "Product inserted successfully" });
+});
+
+const inputRiderDetails = catchAsync(async (req, res, next) => {
+  const file = req.files?.rawData;
+
+  if (!file) {
+    return next(new AppError("File not found", 400));
+  }
+
+  const acceptedFileMimeTypes = [
+    "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  ];
+
+  if (!acceptedFileMimeTypes.includes(file.mimetype)) {
+    return next(new AppError("Please select an Excel File", 400));
+  }
+
+  const data = readExcelFile(file.tempFilePath);
+
+  await Rider.insertMany(data);
+
+  res.status(200).json({ message: "Riders inserted successfully" });
+});
+
+module.exports = {
+  inputDeliveryPoints,
+  inputProductDetails,
+  inputDummyProducts,
+  inputRiderDetails,
+};
