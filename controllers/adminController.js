@@ -260,7 +260,6 @@ const adminDetails = catchAsync(async (req, res, next) => {
   );
 
   const { data } = response;
-
   const allocatedRiders = data.riders;
 
   await Promise.all(
@@ -269,13 +268,11 @@ const adminDetails = catchAsync(async (req, res, next) => {
     })
   );
 
-  const checkUpdatedRiders = await Rider.find();
+  const updatedRiders = await Rider.find();
 
   res.status(200).json({
     message: "Success",
-    depot: requestBody.depot,
-    riders,
-    checkUpdatedRiders,
+    data: { orders, riders: updatedRiders, depot },
   });
 });
 
