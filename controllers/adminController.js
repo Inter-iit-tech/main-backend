@@ -8,7 +8,7 @@ const Product = require("../model/productModel");
 const Order = require("../model/orderModel");
 const Rider = require("../model/riderModel");
 
-const { getGeocode } = require("./inputController");
+const { getGeocode } = require("../utils/geocoding");
 
 const baseUrl = "http://localhost:3000";
 
@@ -53,8 +53,8 @@ const sendNotification = async (pushToken, message, data) => {
  */
 const startOfTheDayCall = async () => {
   try {
-    const orders = Order.find({ isDelivered: false });
-    const riders = Rider.find();
+    const orders = await Order.find({ isDelivered: false });
+    const riders = await Rider.find();
 
     //TODO: add API CALL to call the Route Allocation Service
     const ridersAllocated = await axios.get(`${baseUrl}/allocation`, {
@@ -142,49 +142,50 @@ const createPickupOrderObject = async (pickup) => {
 
 const addPickup = catchAsync(async (req, res, next) => {
   // Create a new order object of type pickup
-  const order = req.query.order;
+  const order = req.body.order;
   const orderObject = await createPickupOrderObject(order);
   const newOrder = await Order.create(orderObject);
 
-  // TODO: Add API call for adding dynamic pickup
-  //expected response riders updated
-  const ridersAllocated = await axios.get(`${baseUrl}/allocation/`, {
-    newOrder,
-  });
+  // // TODO: Add API call for adding dynamic pickup
+  // //expected response riders updated
+  // const ridersAllocated = await axios.get(`${baseUrl}/allocation/`, {
+  //   newOrder,
+  // });
 
-  // original riders in the database
-  const riders = await Rider.find();
+  // // original riders in the database
+  // const riders = await Rider.find();
 
-  // Array to maintain the riders with changed routes
-  const routeChangedRiders = [];
+  // // Array to maintain the riders with changed routes
+  // const routeChangedRiders = [];
 
-  // Check for riders if they have changed tours
-  riders.forEach(async (rider) => {
-    try {
-      const riderInConsideration = ridersAllocated.find(
-        (r) => r._id === rider._id
-      );
+  // // Check for riders if they have changed tours
+  // riders.forEach(async (rider) => {
+  //   try {
+  //     const riderInConsideration = ridersAllocated.find(
+  //       (r) => r._id === rider._id
+  //     );
 
-      if (!areTourArraysEqual(riderInConsideration.tours, r.tours)) {
-        routeChangedRiders.push(r);
+  //     if (!areTourArraysEqual(riderInConsideration.tours, r.tours)) {
+  //       routeChangedRiders.push(r);
 
-        const updateRider = await Rider.findByIdAndUpdate(r._id, {
-          tours: riderInConsideration.tours,
-        });
-      }
-    } catch (e) {
-      console.log(e);
-    }
-  });
+  //       const updateRider = await Rider.findByIdAndUpdate(r._id, {
+  //         tours: riderInConsideration.tours,
+  //       });
+  //     }
+  //   } catch (e) {
+  //     console.log(e);
+  //   }
+  // });
 
-  routeChangedRiders.forEach(async (rider) => {
-    //TODO: Add function to send firebase notifications to the riders whose routes are updated
-    await sendNotification(rider.firebaseMessagingId, "Hello, Android user!");
-  });
+  // routeChangedRiders.forEach(async (rider) => {
+  //   //TODO: Add function to send firebase notifications to the riders whose routes are updated
+  //   await sendNotification(rider.firebaseMessagingId, "Hello, Android user!");
+  // });
 
   res.status(200).json({
     message: "Pickup added successfully and notification sent to riders!",
-    changedRiders: routeChangedRiders,
+    data: { order: newOrder },
+    // changedRiders: routeChangedRiders,
   });
 });
 
@@ -199,8 +200,8 @@ const deletePickup = catchAsync(async (req, res, next) => {
  * Function to serve HTTP request for getting details about a day
  */
 const adminDetails = catchAsync(async (req, res, next) => {
-  const orders = Order.find({ isDelivered: false });
-  const riders = Rider.find();
+  const orders = await Order.find();
+  const riders = await Rider.find();
 
   res.status(200).json({
     message: "Success",

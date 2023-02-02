@@ -16,11 +16,14 @@ const riderSchema = new mongoose.Schema(
     currentAvailableBagVolume: {
       type: Number,
     },
-    tours: {
-      // type: Array[{
-      type: Array[{ type: mongoose.Schema.Types.ObjectId, ref: "Order" }],
-      // }],
-    },
+    tours: [
+      [
+        {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "Order",
+        },
+      ],
+    ],
   },
   {
     toJSON: { virtuals: true },
