@@ -11,7 +11,6 @@ const Rider = require("../model/riderModel");
 const { getGeocode } = require("../utils/geocoding");
 
 const randomIntFromInterval = (min, max) => {
-  // min and max included
   return Math.floor(Math.random() * (max - min + 1) + min);
 };
 
@@ -105,7 +104,7 @@ const inputDeliveryPoints = catchAsync(async (req, res, next) => {
       product: order.product_id,
       productID: order.productID,
       address: order.address,
-      estimatedTime: moment().add(randomIntFromInterval(200, 600), "m"), // TODO: this should be the estimated time
+      estimatedTime: moment().add(randomIntFromInterval(200, 600), "m"), // TODO: this should be the estimated time from the input
       location: order.location,
     };
   });

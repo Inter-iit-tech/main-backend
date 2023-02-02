@@ -73,12 +73,29 @@ const getRiderDetailsOfTheDay = catchAsync(async (req, res, next) => {
  * Function to serve HTTP request for marking the status delivery of the order
  */
 const markOrderStatus = catchAsync(async (req, res, next) => {
-  const rider = req.param.id;
+  const riderID = req.params.id;
   const orderID = req.body.orderID;
 
   const status = req.body.order.status;
   const location = req.body.order.location;
   const userLocation = req.body.order.riderLocation;
+
+  const rider = await Rider.findById(riderID);
+
+  let flag = false;
+
+  const tours = rider.tours;
+  for (let i = 0; i < tours.length; i++) {
+    if (tours[i].indexOf((order) => order.orderId === orderID) !== -1) {
+      flag = true;
+    }
+  }
+
+  if (!flag) {
+    return next(
+      new AppError("This order is not assigned to the given rider", 400)
+    );
+  }
 
   const updateObject = { isDelivered: status, isFakeAttempt: false };
   if (!status) {

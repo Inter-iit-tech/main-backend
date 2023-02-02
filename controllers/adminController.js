@@ -186,7 +186,6 @@ const addPickup = catchAsync(async (req, res, next) => {
   res.status(200).json({
     message: "Pickup added successfully and notification sent to riders!",
     data: { order: newOrder },
-    // changedRiders: routeChangedRiders,
   });
 });
 
@@ -197,7 +196,7 @@ const deletePickup = catchAsync(async (req, res, next) => {
   res.status(200).json({ message: "Delete Pickup" });
 });
 
-const formatRequestBody = (dbRiders, dbOrders, depotLocation) => {
+const formatRequestBodyForStartDay = (dbRiders, dbOrders, depotLocation) => {
   const riders = dbRiders.map((dbRider) => {
     return {
       id: dbRider._id,
@@ -253,7 +252,7 @@ const adminDetails = catchAsync(async (req, res, next) => {
   const depot = orders[depotIndex];
   orders.splice(depotIndex, 1);
 
-  const requestBody = formatRequestBody(riders, orders, depot);
+  const requestBody = formatRequestBodyForStartDay(riders, orders, depot);
   const response = await axios.post(
     `${baseUrl}/api/solve/startday/`,
     requestBody
