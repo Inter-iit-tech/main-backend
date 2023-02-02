@@ -7,7 +7,7 @@ const riderSchema = new mongoose.Schema(
     phoneNumber: {
       type: String,
     },
-    firebaseMessagingId: {
+    expoTokenId: {
       type: String,
     },
     totalBagVolume: {

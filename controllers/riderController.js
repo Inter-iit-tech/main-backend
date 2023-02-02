@@ -80,4 +80,33 @@ const markOrderStatus = catchAsync(async (req, res, next) => {
   });
 });
 
-module.exports = { getRiderDetailsOfTheDay, markOrderStatus };
+/*
+  Function to update tokenId
+*/
+const updateTokenId = catchAsync(async (req, res, next) => {
+  const { phoneNumber } = req.params;
+  const { token } = req.body;
+  if (!token) {
+    return next(new AppError("Token not present", 404));
+  }
+  let rider = await Rider.findOneAndUpdate(
+    { phoneNumber: phoneNumber },
+    { expoTokenId: token },
+    { new: true }
+  );
+
+  if (!rider) {
+    // Create new rider
+    rider = await Rider.create({
+      phoneNumber: phoneNumber,
+      expoTokenId: token,
+    });
+  }
+
+  res.status(200).json({
+    status: "success",
+    rider: rider,
+  });
+});
+
+module.exports = { getRiderDetailsOfTheDay, markOrderStatus, updateTokenId };
