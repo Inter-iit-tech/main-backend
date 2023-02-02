@@ -1,4 +1,5 @@
 const reader = require("xlsx");
+const moment = require("moment");
 
 const AppError = require("../utils/appError");
 const catchAsync = require("../utils/catchAsync");
@@ -8,6 +9,11 @@ const Order = require("../model/orderModel");
 const Rider = require("../model/riderModel");
 
 const { getGeocode } = require("../utils/geocoding");
+
+const randomIntFromInterval = (min, max) => {
+  // min and max included
+  return Math.floor(Math.random() * (max - min + 1) + min);
+};
 
 /**
  * Reads data from the first sheet of excel file and converts it to JSON
@@ -99,7 +105,7 @@ const inputDeliveryPoints = catchAsync(async (req, res, next) => {
       product: order.product_id,
       productID: order.productID,
       address: order.address,
-      estimatedTime: new Date(), // TODO: this should be the estimated time
+      estimatedTime: moment().add(randomIntFromInterval(200, 600), "m"), // TODO: this should be the estimated time
       location: order.location,
     };
   });
@@ -131,7 +137,7 @@ const inputProductDetails = catchAsync(async (req, res, next) => {
 
   const data = {
     skuID,
-    volumetricWeight: volume,
+    volume,
     deadWeight,
     length,
     breadth,
@@ -194,9 +200,34 @@ const inputRiderDetails = catchAsync(async (req, res, next) => {
   res.status(200).json({ message: "Riders inserted successfully" });
 });
 
+const inputDepotLocation = catchAsync(async (req, res, next) => {
+  const location = req.body.location;
+
+  const depotProduct = await Product.create({
+    skuID: "SKU_0000000000",
+    volume: 20,
+  });
+
+  const depotOrder = await Order.create({
+    AWB: 00000000000,
+    names: "Depot Location",
+    product: "SKU_0000000000",
+    productID: depotProduct._id,
+    address: "Depot Location",
+    estimatedTime: moment().add(randomIntFromInterval(200, 600), "m"),
+    location: location,
+  });
+
+  res.status(201).json({
+    message: "Depot Location created successfully",
+    data: { depotOrder, depotProduct },
+  });
+});
+
 module.exports = {
   inputDeliveryPoints,
   inputProductDetails,
   inputDummyProducts,
   inputRiderDetails,
+  inputDepotLocation
 };

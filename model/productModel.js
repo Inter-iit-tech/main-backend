@@ -12,7 +12,7 @@ const productSchema = new mongoose.Schema(
     deadWeight: {
       type: Number,
     },
-    volumetricWeight: {
+    volume: {
       type: Number,
     },
     length: {

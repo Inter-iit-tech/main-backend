@@ -20,6 +20,7 @@
     "firebase-admin": "^11.4.1",
     "helmet": "^6.0.1",
     "http": "^0.0.1-security",
+    "moment": "^2.29.4",
     "mongoose": "^6.8.3",
     "morgan": "^1.10.0",
     "node-cron": "^3.0.2",

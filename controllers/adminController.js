@@ -1,4 +1,5 @@
 const axios = require("axios");
+const moment = require("moment");
 const { Expo } = require("expo-server-sdk");
 
 const AppError = require("../utils/appError");
@@ -10,7 +11,7 @@ const Rider = require("../model/riderModel");
 
 const { getGeocode } = require("../utils/geocoding");
 
-const baseUrl = "http://localhost:3000";
+const baseUrl = "http://192.168.137.128:8010";
 
 /**
  * Function to send notification to the mobile device.
@@ -196,16 +197,85 @@ const deletePickup = catchAsync(async (req, res, next) => {
   res.status(200).json({ message: "Delete Pickup" });
 });
 
+const formatRequestBody = (dbRiders, dbOrders, depotLocation) => {
+  const riders = dbRiders.map((dbRider) => {
+    return {
+      id: dbRider._id,
+      vehicle: {
+        capacity: Math.ceil(dbRider.totalBagVolume),
+      },
+      //TODO: Check if this has to be dynamic
+      startTime: "09:00:00",
+    };
+  });
+
+  const orders = dbOrders.map((dbOrder) => {
+    return {
+      id: dbOrder._id,
+      orderType: dbOrder.type,
+      point: {
+        longitude: dbOrder.location.lng,
+        latitude: dbOrder.location.lat,
+      },
+      expectedTime: `${moment(dbOrder.estimatedTime).format("HH:mm:ss")}`,
+      package: {
+        volume: Math.ceil(dbOrder.productID.volume),
+      },
+    };
+  });
+
+  const depot = {
+    id: depotLocation._id,
+    point: {
+      latitude: depotLocation.location.lat,
+      longitude: depotLocation.location.lng,
+    },
+  };
+
+  const requestBody = { riders, orders, depot };
+  return requestBody;
+};
+
 /**
  * Function to serve HTTP request for getting details about a day
  */
 const adminDetails = catchAsync(async (req, res, next) => {
-  const orders = await Order.find();
+  const orders = await Order.find().populate({
+    path: "productID",
+    select: "volume",
+    model: "Product",
+  });
   const riders = await Rider.find();
+
+  const depotIndex = orders.findIndex(
+    (order) => order.product === "SKU_0000000000"
+  );
+  const depot = orders[depotIndex];
+  orders.splice(depotIndex, 1);
+
+  const requestBody = formatRequestBody(riders, orders, depot);
+  const response = await axios.post(
+    `${baseUrl}/api/solve/startday/`,
+    requestBody
+  );
+
+  const { data } = response;
+
+  const allocatedRiders = data.riders;
+
+  await Promise.all(
+    allocatedRiders.map(async (rider) => {
+      await Rider.findByIdAndUpdate(rider.id, { tours: rider.tours });
+    })
+  );
+
+  const checkUpdatedRiders = await Rider.find();
 
   res.status(200).json({
     message: "Success",
-    data: { orders, riders },
+    depot: requestBody.depot,
+    riders,
+    checkUpdatedRiders,
   });
 });
 

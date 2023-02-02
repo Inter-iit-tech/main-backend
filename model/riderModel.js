@@ -19,8 +19,8 @@ const riderSchema = new mongoose.Schema(
     tours: [
       [
         {
-          type: mongoose.Schema.Types.ObjectId,
-          ref: "Order",
+          orderId: { type: mongoose.Schema.Types.ObjectId, ref: "Order" },
+          timing: String,
         },
       ],
     ],
