@@ -279,4 +279,24 @@ const adminDetails = catchAsync(async (req, res, next) => {
   });
 });
 
-module.exports = { addPickup, adminDetails };
+const getDetails = catchAsync(async (req, res, next) => {
+  const { reqQuery } = req.params;
+  console.log(reqQuery);
+  let data;
+
+  switch (reqQuery) {
+    case "orders":
+      data = await Order.find();
+      break;
+
+    case "riders":
+      data = await Rider.find();
+      break;
+  }
+
+  res.status(200).json({
+    status: "success",
+    data: data,
+  });
+});
+module.exports = { addPickup, adminDetails, getDetails };

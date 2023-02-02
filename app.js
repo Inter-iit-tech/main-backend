@@ -17,7 +17,7 @@ const app = express();
 
 app.use(helmet());
 app.use(xss());
-app.use(cors({ origin: "http://localhost:3001", credentials: true }));
+app.use(cors({ origin: true, credentials: true }));
 app.use(express.json({ limit: "10kb" }));
 app.use(express.urlencoded({ extended: true }));
 app.use(fileUpload({ useTempFiles: true, tempFileDir: "/tmp/" }));
