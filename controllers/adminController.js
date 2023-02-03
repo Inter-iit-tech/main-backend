@@ -180,7 +180,7 @@ const addPickup = catchAsync(async (req, res, next) => {
 
   // routeChangedRiders.forEach(async (rider) => {
   //   //TODO: Add function to send firebase notifications to the riders whose routes are updated
-  //   await sendNotification(rider.firebaseMessagingId, "Hello, Android user!");
+  //   await sendNotification(rider.expoTokenId, "Hello, Android user!");
   // });
 
   res.status(200).json({
