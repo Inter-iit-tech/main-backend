@@ -11,6 +11,8 @@ const Rider = require("../model/riderModel");
 
 const { getGeocode } = require("../utils/geocoding");
 
+const { sendNotification } = require("./notificationController");
+
 const baseUrl = "http://192.168.137.128:8010";
 
 /**
@@ -19,35 +21,35 @@ const baseUrl = "http://192.168.137.128:8010";
  * @param {String} message
  * @param {Object} data
  */
-const sendNotification = async (pushToken, message, data) => {
-  // Expo Client
-  const expo = new Expo();
+// const sendNotification = async (pushToken, message, data) => {
+//   // Expo Client
+//   const expo = new Expo();
 
-  const messages = [
-    {
-      to: pushToken,
-      sound: "default",
-      body: message,
-      data: data,
-    },
-  ];
+//   const messages = [
+//     {
+//       to: pushToken,
+//       sound: "default",
+//       body: message,
+//       data: data,
+//     },
+//   ];
 
-  const chunks = expo.chunkPushNotifications(messages);
-  const tickets = [];
+//   const chunks = expo.chunkPushNotifications(messages);
+//   const tickets = [];
 
-  // Send chunks of notification
-  (async () => {
-    for (let chunk of chunks) {
-      try {
-        let ticketChunk = await expo.sendPushNotificationsAsync(chunk);
-        console.log(ticketChunk);
-        tickets.push(...ticketChunk);
-      } catch (error) {
-        console.error(error);
-      }
-    }
-  })();
-};
+//   // Send chunks of notification
+//   (async () => {
+//     for (let chunk of chunks) {
+//       try {
+//         let ticketChunk = await expo.sendPushNotificationsAsync(chunk);
+//         console.log(ticketChunk);
+//         tickets.push(...ticketChunk);
+//       } catch (error) {
+//         console.error(error);
+//       }
+//     }
+//   })();
+// };
 
 /**
  * Start of the day function called by the cron job.
@@ -134,7 +136,7 @@ const createPickupOrderObject = async (pickup) => {
       type: "pickup",
     };
 
-    return orderObject;
+    return { order: orderObject, volume: dbProduct.volume };
   } catch (e) {
     console.error(e);
     throw new AppError("Error in creating the order object", 400);
@@ -145,57 +147,169 @@ const addPickup = catchAsync(async (req, res, next) => {
   // Create a new order object of type pickup
   const order = req.body.order;
   const orderObject = await createPickupOrderObject(order);
-  const newOrder = await Order.create(orderObject);
+  const createdOrder = await Order.create(orderObject.order);
 
-  // // TODO: Add API call for adding dynamic pickup
-  // //expected response riders updated
-  // const ridersAllocated = await axios.get(`${baseUrl}/allocation/`, {
-  //   newOrder,
-  // });
+  const newOrder = {
+    ...formatOrder(createdOrder._doc),
+    package: { volume: Math.ceil(orderObject.volume) },
+  };
 
-  // // original riders in the database
-  // const riders = await Rider.find();
+  const riders = await Rider.find();
 
-  // // Array to maintain the riders with changed routes
-  // const routeChangedRiders = [];
+  const orders = await Order.find({ isDelivered: false }).populate({
+    path: "productID",
+    model: "Product",
+  });
 
-  // // Check for riders if they have changed tours
-  // riders.forEach(async (rider) => {
-  //   try {
-  //     const riderInConsideration = ridersAllocated.find(
-  //       (r) => r._id === rider._id
-  //     );
+  const depotIndex = orders.findIndex(
+    (order) => order.product === "SKU_0000000000"
+  );
+  const depot = orders[depotIndex];
 
-  //     if (!areTourArraysEqual(riderInConsideration.tours, r.tours)) {
-  //       routeChangedRiders.push(r);
+  // Formatting request body
+  const requestBody = {
+    ...formatRequestBodyToAddPickup(riders, orders, depot),
+    newOrder,
+  };
+  // console.dir(requestBody, { depth: null });
 
-  //       const updateRider = await Rider.findByIdAndUpdate(r._id, {
-  //         tours: riderInConsideration.tours,
-  //       });
-  //     }
-  //   } catch (e) {
-  //     console.log(e);
-  //   }
-  // });
+  // requestBody.riders.map(rider => {
+  //   console.dir(rider.tours, { depth: null })
+  // })
 
-  // routeChangedRiders.forEach(async (rider) => {
-  //   //TODO: Add function to send firebase notifications to the riders whose routes are updated
-  //   await sendNotification(rider.expoTokenId, "Hello, Android user!");
-  // });
+  // Making request
+  const response = await axios.post(
+    `${baseUrl}/api/solve/addorder/`,
+    requestBody
+  );
+
+  // console.log({ response });
+
+  // check if any rider has updatedcurrenttour true
+  const riderWithUpdatedCurrentTour = response?.data.riders.find(
+    (rider) => rider.updateCurrentTour === true
+  );
+  console.log({ riderWithUpdatedCurrentTour });
+
+  // send notification if any
+  let responseMsg = "Pickup added successfully";
+  if (riderWithUpdatedCurrentTour) {
+    const riderTokenId = await Rider.findById(riderWithUpdatedCurrentTour._id)
+      .expoTokenId;
+    await sendNotification([
+      {
+        token: riderTokenId,
+        notificationData: { msg: "Your current tour is rerouted!" },
+      },
+    ]);
+
+    responseMsg += " and notification sent to rider!";
+  }
+
+  // Updating riders tours
+  // await Promise.all(
+  //   response.rider.map(async (rider) => {
+  //     await Rider.findByIdAndUpdate(rider.id, { tours: rider.tours });
+  //   })
+  // );
 
   res.status(200).json({
-    message: "Pickup added successfully and notification sent to riders!",
+    message: responseMsg,
     data: { order: newOrder },
-    // changedRiders: routeChangedRiders,
   });
 });
 
 const deletePickup = catchAsync(async (req, res, next) => {
-  const order = req.query.order;
+  const orderId = req.body.orderId;
 
-  //TODO: add API call to deletion pickup
-  res.status(200).json({ message: "Delete Pickup" });
+  const riders = await Rider.find();
+
+  const orders = await Order.find({ isDelivered: false }).populate({
+    path: "productID",
+    model: "Product",
+  });
+
+  const depotIndex = orders.findIndex(
+    (order) => order.product === "SKU_0000000000"
+  );
+  const depot = orders[depotIndex];
+
+  // Formatting request body
+  const requestBody = {
+    ...formatRequestBodyToAddPickup(riders, orders, depot),
+    delOrderId: orderId,
+  };
+
+  console.dir(requestBody, { depth: null });
+
+  // res.send(requestBody);
+
+  // requestBody.riders.map(rider => {
+  //   console.dir(rider.tours, { depth: null })
+  // })
+
+  // Making request
+  const response = await axios.post(
+    `${baseUrl}/api/solve/delorder/`,
+    requestBody
+  );
+
+  // console.log({ response });
+
+  // check if any rider has updatedcurrenttour true
+  const riderWithUpdatedCurrentTour = response?.data.riders.find(
+    (rider) => rider.updateCurrentTour === true
+  );
+  console.log({ riderWithUpdatedCurrentTour });
+
+  // send notification if any
+  let responseMsg = "Pickup deleted successfully";
+  if (riderWithUpdatedCurrentTour) {
+    const riderTokenId = await Rider.findById(riderWithUpdatedCurrentTour._id)
+      .expoTokenId;
+    await sendNotification([
+      {
+        token: riderTokenId,
+        notificationData: { msg: "Your current tour is rerouted!" },
+      },
+    ]);
+
+    responseMsg += " and notification sent to rider!";
+  }
+
+  // Updating riders tours
+  // await Promise.all(
+  //   response.rider.map(async (rider) => {
+  //     await Rider.findByIdAndUpdate(rider.id, { tours: rider.tours });
+  //   })
+  // );
+
+  res.status(200).json({
+    message: responseMsg,
+    data: response.data,
+    requestBody,
+    // changedRiders: routeChangedRiders,
+  });
 });
+
+const formatOrder = (dbOrder) => {
+  return {
+    id: dbOrder._id,
+    orderType: dbOrder.type,
+    point: {
+      longitude: dbOrder.location.lng,
+      latitude: dbOrder.location.lat,
+    },
+    expectedTime: `${moment(dbOrder.estimatedTime).format("HH:mm:ss")}`,
+    package: {
+      volume: Math.ceil(dbOrder.productID.volume),
+    },
+  };
+};
+
+const formatTour = (tour) => {
+  return tour.map((el) => ({ orderId: el.orderId, timing: el.timing }));
+};
 
 const formatRequestBody = (dbRiders, dbOrders, depotLocation) => {
   const riders = dbRiders.map((dbRider) => {
@@ -209,20 +323,33 @@ const formatRequestBody = (dbRiders, dbOrders, depotLocation) => {
     };
   });
 
-  const orders = dbOrders.map((dbOrder) => {
+  const orders = dbOrders.map(formatOrder);
+
+  const depot = {
+    id: depotLocation._id,
+    point: {
+      latitude: depotLocation.location.lat,
+      longitude: depotLocation.location.lng,
+    },
+  };
+
+  const requestBody = { riders, orders, depot };
+  return requestBody;
+};
+
+const formatRequestBodyToAddPickup = (dbRiders, dbOrders, depotLocation) => {
+  const riders = dbRiders.map((dbRider) => {
     return {
-      id: dbOrder._id,
-      orderType: dbOrder.type,
-      point: {
-        longitude: dbOrder.location.lng,
-        latitude: dbOrder.location.lat,
+      id: dbRider._id,
+      vehicle: {
+        capacity: Math.ceil(dbRider.totalBagVolume),
       },
-      expectedTime: `${moment(dbOrder.estimatedTime).format("HH:mm:ss")}`,
-      package: {
-        volume: Math.ceil(dbOrder.productID.volume),
-      },
+      tours: dbRider.tours.map(formatTour),
+      headingTo: dbRider.tours?.[0]?.[0]?.orderId || depotLocation._id,
     };
   });
+
+  const orders = dbOrders.map(formatOrder);
 
   const depot = {
     id: depotLocation._id,
@@ -254,13 +381,15 @@ const adminDetails = catchAsync(async (req, res, next) => {
   orders.splice(depotIndex, 1);
 
   const requestBody = formatRequestBody(riders, orders, depot);
+
+  // console.dir({ requestBody }, { depth: null })
+
   const response = await axios.post(
     `${baseUrl}/api/solve/startday/`,
     requestBody
   );
 
   const { data } = response;
-
   const allocatedRiders = data.riders;
 
   await Promise.all(
@@ -269,13 +398,11 @@ const adminDetails = catchAsync(async (req, res, next) => {
     })
   );
 
-  const checkUpdatedRiders = await Rider.find();
+  const updatedRiders = await Rider.find();
 
   res.status(200).json({
     message: "Success",
-    depot: requestBody.depot,
-    riders,
-    checkUpdatedRiders,
+    data: { orders, riders: updatedRiders, depot },
   });
 });
 
@@ -285,6 +412,10 @@ const getDetails = catchAsync(async (req, res, next) => {
   let data;
 
   switch (reqQuery) {
+    case "pickups":
+      data = await Order.find({ isDelivered: false, type: "pickup" });
+      break;
+
     case "orders":
       data = await Order.find();
       break;
@@ -299,4 +430,5 @@ const getDetails = catchAsync(async (req, res, next) => {
     data: data,
   });
 });
-module.exports = { addPickup, adminDetails, getDetails };
+
+module.exports = { addPickup, adminDetails, getDetails, deletePickup };

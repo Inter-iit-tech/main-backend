@@ -41,12 +41,30 @@ const deg2rad = (deg) => {
  * Function to serve HTTP request for the get rider details
  */
 const getRiderDetailsOfTheDay = catchAsync(async (req, res, next) => {
-  const riderID = req.param.id;
+  const riderID = req.params.id;
 
-  const rider = await Rider.findById(riderID).populate({ tours });
+  if (!riderID) {
+    return next(new AppError("Rider ID not specified", 400));
+  }
+
+  const rider = await Rider.findById(riderID);
+
+  if (!rider) {
+    return next(new AppError("Rider not found", 404));
+  }
+
+  const noOfTours = rider.tours.length;
+  let arr = [];
+  for (let i = 0; i < noOfTours; i++) {
+    arr.push(`tours.${i}.orderId `);
+  }
+  let path = arr.join("");
+  path = path.slice(0, path.length - 1);
+
+  await rider.populate({ path, model: "Order" });
 
   res.status(200).json({
-    message: "Fetch Riders' details successfully",
+    message: "Fetched rider's details successfully",
     rider,
   });
 });

@@ -20,6 +20,7 @@ const getGeocode = async (address) => {
         //TODO: add filtering based on Bangalore Data
       },
     };
+    
     const gcResponse = await client.geocode(args);
 
     const status = gcResponse.data.status;
@@ -34,6 +35,7 @@ const getGeocode = async (address) => {
         locationType: firstResult.geometry.location_type,
       },
     };
+
     return response;
   } catch (e) {
     throw new AppError(
