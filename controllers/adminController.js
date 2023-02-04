@@ -153,8 +153,6 @@ const addPickup = catchAsync(async (req, res, next) => {
 
   const riders = await Rider.find();
 
-  console.dir({ riders }, { depth: null })
-
   const orders = await Order.find({ isDelivered: false }).populate({
     path: "productID",
     model: "Product",
@@ -167,7 +165,7 @@ const addPickup = catchAsync(async (req, res, next) => {
 
   // Formatting request body
   const requestBody = { ...formatRequestBodyToAddPickup(riders, orders, depot), newOrder };
-  // console.dir(requestBody.riders, { depth: null });
+  // console.dir(requestBody, { depth: null });
 
   // requestBody.riders.map(rider => {
   //   console.dir(rider.tours, { depth: null })
@@ -179,7 +177,7 @@ const addPickup = catchAsync(async (req, res, next) => {
     requestBody
   );
 
-  console.log({ response });
+  // console.log({ response });
 
   // check if any rider has updatedcurrenttour true
   const riderWithUpdatedCurrentTour = response.riders.find(rider => rider.updateCurrentTour === true);
@@ -230,6 +228,10 @@ const formatOrder = (dbOrder) => {
   };
 }
 
+const formatTour = (tour) => {
+  return tour.map(el => ({ orderId: el.orderId, timing: el.timing }));
+}
+
 const formatRequestBody = (dbRiders, dbOrders, depotLocation) => {
   const riders = dbRiders.map((dbRider) => {
     return {
@@ -263,7 +265,7 @@ const formatRequestBodyToAddPickup = (dbRiders, dbOrders, depotLocation) => {
       vehicle: {
         capacity: Math.ceil(dbRider.totalBagVolume),
       },
-      tours: dbRider.tours,
+      tours: dbRider.tours.map(formatTour),
       headingTo: dbRider.tours?.[0]?.[0]?.orderId || depotLocation._id
     };
   });
@@ -301,31 +303,31 @@ const adminDetails = catchAsync(async (req, res, next) => {
 
   const requestBody = formatRequestBody(riders, orders, depot);
 
-  console.dir({ requestBody }, { depth: null })
+  // console.dir({ requestBody }, { depth: null })
 
-  // const response = await axios.post(
-  //   `${baseUrl}/api/solve/startday/`,
-  //   requestBody
-  // );
+  const response = await axios.post(
+    `${baseUrl}/api/solve/startday/`,
+    requestBody
+  );
 
-  // const { data } = response;
+  const { data } = response;
 
-  // const allocatedRiders = data.riders;
+  const allocatedRiders = data.riders;
 
-  // await Promise.all(
-  //   allocatedRiders.map(async (rider) => {
-  //     await Rider.findByIdAndUpdate(rider.id, { tours: rider.tours });
-  //   })
-  // );
+  await Promise.all(
+    allocatedRiders.map(async (rider) => {
+      await Rider.findByIdAndUpdate(rider.id, { tours: rider.tours });
+    })
+  );
 
-  // const checkUpdatedRiders = await Rider.find();
+  const checkUpdatedRiders = await Rider.find();
 
-  // res.status(200).json({
-  //   message: "Success",
-  //   depot: requestBody.depot,
-  //   riders,
-  //   checkUpdatedRiders,
-  // });
+  res.status(200).json({
+    message: "Success",
+    depot: requestBody.depot,
+    riders,
+    checkUpdatedRiders,
+  });
 });
 
 const getDetails = catchAsync(async (req, res, next) => {
