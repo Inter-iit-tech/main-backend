@@ -227,7 +227,7 @@ const deletePickup = catchAsync(async (req, res, next) => {
   
   console.dir(requestBody, { depth: null });
   
-  res.send(requestBody);
+  // res.send(requestBody);
 
   // requestBody.riders.map(rider => {
   //   console.dir(rider.tours, { depth: null })
@@ -263,7 +263,7 @@ const deletePickup = catchAsync(async (req, res, next) => {
 
   res.status(200).json({
     message: responseMsg,
-    data: { order: newOrder },
+    data: response.data ,
     requestBody
     // changedRiders: routeChangedRiders,
   });
