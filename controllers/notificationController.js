@@ -8,9 +8,7 @@ const catchAsync = require("../utils/catchAsync");
   notifications :  [{token , notificationData}]
   If required notificationData can contain other details like title,body and data
 */
-exports.sendNotification = catchAsync(async (req, res, next) => {
-  const { notifications } = req.body;
-
+const sendNotification = async (notifications) => {
   let messages = [];
 
   for (let i = 0; i < notifications.length; i++) {
@@ -62,9 +60,12 @@ exports.sendNotification = catchAsync(async (req, res, next) => {
       else if (status == "error") error++;
     }
   }
-  res.status(200).json({
-    status: "success",
-    successNotifications: success,
-    errorNotifications: error,
-  });
-});
+
+  // res.status(200).json({
+  //   status: "success",
+  //   successNotifications: success,
+  //   errorNotifications: error,
+  // });
+};
+
+module.exports = { sendNotification }
