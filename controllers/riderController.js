@@ -55,25 +55,58 @@ const getRiderDetailsOfTheDay = catchAsync(async (req, res, next) => {
  * Function to serve HTTP request for marking the status delivery of the order
  */
 const markOrderStatus = catchAsync(async (req, res, next) => {
-  const rider = req.param.id;
-  const orderID = req.body.orderID;
+  const riderID = req.params.id;
+  const orderID = req.params.orderID;
 
   const status = req.body.order.status;
   const location = req.body.order.location;
   const userLocation = req.body.order.riderLocation;
 
-  const updateObject = { isDelivered: status, isFakeAttempt: false };
-  if (!status) {
-    // TODO: Get location of rider and check if the rider is the acceptable distance from the drop location.
-    const dist = getDistanceFromLatLonInKm(location, userLocation);
 
-    if (dist > acceptableDistanceInKm) {
-      //TODO: Mark this as a fake attempt of delivery
-      updateObject.isFakeAttempt = true;
-    }
+  if (!riderID || !orderID || !status) {
+    return next(new AppError("Bad Request", 400));
   }
 
+const rider = await Rider.findById(riderID);
+
+
+if (!rider) {
+  return next(new AppError("Rider not found", 404));
+}
+
+const currentDeliveryLocation = rider?.tours?.[0]?.[0]?.orderId;
+console.log({orderID, currentDeliveryLocation});
+if (!currentDeliveryLocation.equals(orderID)) {
+  return next(new AppError("This is not the next deliveryLocation", 400));
+}
+
+
+
+const tours = rider?.tours;
+
+console.log({tours});
+
+tours[0].splice(0,1);
+
+if (tours[0].length < 0) {
+  tours.splice(0,1);
+}
+console.log({tours});
+
+
+
+  const updateObject = { isDelivered: status, isFakeAttempt: false };
+  
+    // TODO: Get location of rider and check if the rider is the acceptable distance from the drop location.
+    const dist = getDistanceFromLatLonInKm(location, userLocation);
+    if (dist > acceptableDistanceInKm) {
+      updateObject.isFakeAttempt = true;
+      console.log("This is a fake attempt");
+    }
+
   const updateOrder = await Order.findByIdAndUpdate(orderID, updateObject);
+  const updateRider = await Rider.findByIdAndUpdate(riderID, {tours: newTour})
+
 
   res.status(200).json({
     message: "Order status updated successfully",
