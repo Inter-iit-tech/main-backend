@@ -186,7 +186,7 @@ const addPickup = catchAsync(async (req, res, next) => {
   // console.log({ response });
 
   // check if any rider has updatedcurrenttour true
-  const riderWithUpdatedCurrentTour = response.riders.find(
+  const riderWithUpdatedCurrentTour = response?.data.riders.find(
     (rider) => rider.updateCurrentTour === true
   );
   console.log({ riderWithUpdatedCurrentTour });
@@ -220,10 +220,76 @@ const addPickup = catchAsync(async (req, res, next) => {
 });
 
 const deletePickup = catchAsync(async (req, res, next) => {
-  const order = req.query.order;
+  const orderId = req.body.orderId;
 
-  //TODO: add API call to deletion pickup
-  res.status(200).json({ message: "Delete Pickup" });
+  const riders = await Rider.find();
+
+  const orders = await Order.find({ isDelivered: false }).populate({
+    path: "productID",
+    model: "Product",
+  });
+
+  const depotIndex = orders.findIndex(
+    (order) => order.product === "SKU_0000000000"
+  );
+  const depot = orders[depotIndex];
+
+  // Formatting request body
+  const requestBody = {
+    ...formatRequestBodyToAddPickup(riders, orders, depot),
+    delOrderId: orderId,
+  };
+
+  console.dir(requestBody, { depth: null });
+
+  // res.send(requestBody);
+
+  // requestBody.riders.map(rider => {
+  //   console.dir(rider.tours, { depth: null })
+  // })
+
+  // Making request
+  const response = await axios.post(
+    `${baseUrl}/api/solve/delorder/`,
+    requestBody
+  );
+
+  // console.log({ response });
+
+  // check if any rider has updatedcurrenttour true
+  const riderWithUpdatedCurrentTour = response?.data.riders.find(
+    (rider) => rider.updateCurrentTour === true
+  );
+  console.log({ riderWithUpdatedCurrentTour });
+
+  // send notification if any
+  let responseMsg = "Pickup deleted successfully";
+  if (riderWithUpdatedCurrentTour) {
+    const riderTokenId = await Rider.findById(riderWithUpdatedCurrentTour._id)
+      .expoTokenId;
+    await sendNotification([
+      {
+        token: riderTokenId,
+        notificationData: { msg: "Your current tour is rerouted!" },
+      },
+    ]);
+
+    responseMsg += " and notification sent to rider!";
+  }
+
+  // Updating riders tours
+  // await Promise.all(
+  //   response.rider.map(async (rider) => {
+  //     await Rider.findByIdAndUpdate(rider.id, { tours: rider.tours });
+  //   })
+  // );
+
+  res.status(200).json({
+    message: responseMsg,
+    data: response.data,
+    requestBody,
+    // changedRiders: routeChangedRiders,
+  });
 });
 
 const formatOrder = (dbOrder) => {
@@ -346,6 +412,10 @@ const getDetails = catchAsync(async (req, res, next) => {
   let data;
 
   switch (reqQuery) {
+    case "pickups":
+      data = await Order.find({ isDelivered: false, type: "pickup" });
+      break;
+
     case "orders":
       data = await Order.find();
       break;
@@ -361,4 +431,4 @@ const getDetails = catchAsync(async (req, res, next) => {
   });
 });
 
-module.exports = { addPickup, adminDetails, getDetails };
+module.exports = { addPickup, adminDetails, getDetails, deletePickup };
