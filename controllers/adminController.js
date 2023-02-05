@@ -16,42 +16,6 @@ const { sendNotification } = require("./notificationController");
 const baseUrl = "http://192.168.137.128:8010";
 
 /**
- * Function to send notification to the mobile device.
- * @param {String} pushToken
- * @param {String} message
- * @param {Object} data
- */
-// const sendNotification = async (pushToken, message, data) => {
-//   // Expo Client
-//   const expo = new Expo();
-
-//   const messages = [
-//     {
-//       to: pushToken,
-//       sound: "default",
-//       body: message,
-//       data: data,
-//     },
-//   ];
-
-//   const chunks = expo.chunkPushNotifications(messages);
-//   const tickets = [];
-
-//   // Send chunks of notification
-//   (async () => {
-//     for (let chunk of chunks) {
-//       try {
-//         let ticketChunk = await expo.sendPushNotificationsAsync(chunk);
-//         console.log(ticketChunk);
-//         tickets.push(...ticketChunk);
-//       } catch (error) {
-//         console.error(error);
-//       }
-//     }
-//   })();
-// };
-
-/**
  * Start of the day function called by the cron job.
  */
 const startOfTheDayCall = async () => {
@@ -171,11 +135,6 @@ const addPickup = catchAsync(async (req, res, next) => {
     ...formatRequestBodyToAddPickup(riders, orders, depot),
     newOrder,
   };
-  // console.dir(requestBody, { depth: null });
-
-  // requestBody.riders.map(rider => {
-  //   console.dir(rider.tours, { depth: null })
-  // })
 
   // Making request
   const response = await axios.post(
@@ -183,9 +142,7 @@ const addPickup = catchAsync(async (req, res, next) => {
     requestBody
   );
 
-  // console.log({ response });
-
-  // check if any rider has updatedcurrenttour true
+  // check if any rider has updatedCurrentTour true
   const riderWithUpdatedCurrentTour = response?.data.riders.find(
     (rider) => rider.updateCurrentTour === true
   );
@@ -207,11 +164,11 @@ const addPickup = catchAsync(async (req, res, next) => {
   }
 
   // Updating riders tours
-  // await Promise.all(
-  //   response.rider.map(async (rider) => {
-  //     await Rider.findByIdAndUpdate(rider.id, { tours: rider.tours });
-  //   })
-  // );
+  await Promise.all(
+    response.rider.map(async (rider) => {
+      await Rider.findByIdAndUpdate(rider.id, { tours: rider.tours });
+    })
+  );
 
   res.status(200).json({
     message: responseMsg,
@@ -240,13 +197,7 @@ const deletePickup = catchAsync(async (req, res, next) => {
     delOrderId: orderId,
   };
 
-  console.dir(requestBody, { depth: null });
-
-  // res.send(requestBody);
-
-  // requestBody.riders.map(rider => {
-  //   console.dir(rider.tours, { depth: null })
-  // })
+  // console.dir(requestBody, { depth: null });
 
   // Making request
   const response = await axios.post(
@@ -278,11 +229,11 @@ const deletePickup = catchAsync(async (req, res, next) => {
   }
 
   // Updating riders tours
-  // await Promise.all(
-  //   response.rider.map(async (rider) => {
-  //     await Rider.findByIdAndUpdate(rider.id, { tours: rider.tours });
-  //   })
-  // );
+  await Promise.all(
+    response.rider.map(async (rider) => {
+      await Rider.findByIdAndUpdate(rider.id, { tours: rider.tours });
+    })
+  );
 
   res.status(200).json({
     message: responseMsg,
@@ -381,8 +332,6 @@ const adminDetails = catchAsync(async (req, res, next) => {
   orders.splice(depotIndex, 1);
 
   const requestBody = formatRequestBody(riders, orders, depot);
-
-  // console.dir({ requestBody }, { depth: null })
 
   const response = await axios.post(
     `${baseUrl}/api/solve/startday/`,
