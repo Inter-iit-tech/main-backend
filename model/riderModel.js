@@ -31,6 +31,7 @@ const riderSchema = new mongoose.Schema(
     riderID: {
       type: String,
     },
+    deliveredOrders: [{ type: mongoose.Schema.Types.ObjectId, ref: "Order" }],
   },
   {
     toJSON: { virtuals: true },

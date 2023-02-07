@@ -119,8 +119,13 @@ const markOrderStatus = catchAsync(async (req, res, next) => {
     }
     const updateOrder = await Order.findByIdAndUpdate(orderID, updateObject);
   }
+
+  const deliveredOrders = rider.deliveredOrders || [];
+  deliveredOrders.push(orderID);
+
   const updateRider = await Rider.findByIdAndUpdate(riderID, {
     tours,
+    deliveredOrders,
   });
 
   res.status(200).json({
