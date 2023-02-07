@@ -17,10 +17,12 @@ const getGeocode = async (address) => {
         key: GOOGLE_MAPS_API_KEY,
         address: address,
         region: "IN",
-        //TODO: add filtering based on Bangalore Data
+        componentRestrictions: {
+          administrativeArea: "Bengaluru",
+        },
       },
     };
-    
+
     const gcResponse = await client.geocode(args);
 
     const status = gcResponse.data.status;

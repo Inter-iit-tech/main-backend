@@ -38,11 +38,18 @@ const convertAddressToGeocode = async (data) => {
   try {
     await Promise.all(
       data.map(async (order) => {
-        if (order.address) {
-          const geocodeResponse = await getGeocode(order.address);
-          order.location = geocodeResponse.result.location;
-        } else {
-          console.log(`Address not present in the order details ${order.AWB}`);
+        try {
+          if (order.address) {
+            const geocodeResponse = await getGeocode(order.address);
+            order.location = geocodeResponse.result.location;
+          } else {
+            console.log(
+              `Address not present in the order details ${order.AWB}`
+            );
+          }
+        } catch (err) {
+          console.log(e.message);
+          console.log(`Cannot find address in the order details ${order.AWB}`);
         }
       })
     );
@@ -59,11 +66,15 @@ const getProductIDs = async (orders) => {
   try {
     await Promise.all(
       orders.map(async (order) => {
-        if (order.product_id) {
-          const product = await Product.findOne({ skuID: order.product_id });
-          order.productID = product._id;
-        } else {
-          console.log(`Product ID is not in the order details ${order.AWB}`);
+        try {
+          if (order.product_id) {
+            const product = await Product.findOne({ skuID: order.product_id });
+            order.productID = product._id;
+          } else {
+            console.log(`Product ID is not in the order details ${order.AWB}`);
+          }
+        } catch (err) {
+          console.log(err);
         }
       })
     );
@@ -104,7 +115,7 @@ const inputDeliveryPoints = catchAsync(async (req, res, next) => {
       product: order.product_id,
       productID: order.productID,
       address: order.address,
-      estimatedTime: moment().add(randomIntFromInterval(200, 600), "m"), // TODO: this should be the estimated time from the input
+      estimatedTime: moment(order.EDD, "DD-MM-YYYY"),
       location: order.location,
     };
   });
@@ -228,5 +239,5 @@ module.exports = {
   inputProductDetails,
   inputDummyProducts,
   inputRiderDetails,
-  inputDepotLocation
+  inputDepotLocation,
 };

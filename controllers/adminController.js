@@ -166,7 +166,11 @@ const addPickup = catchAsync(async (req, res, next) => {
   // Updating riders tours
   await Promise.all(
     response.rider.map(async (rider) => {
-      await Rider.findByIdAndUpdate(rider.id, { tours: rider.tours });
+      try {
+        await Rider.findByIdAndUpdate(rider.id, { tours: rider.tours });
+      } catch (e) {
+        console.log("Error in updating the riders");
+      }
     })
   );
 
@@ -231,7 +235,11 @@ const deletePickup = catchAsync(async (req, res, next) => {
   // Updating riders tours
   await Promise.all(
     response.rider.map(async (rider) => {
-      await Rider.findByIdAndUpdate(rider.id, { tours: rider.tours });
+      try {
+        await Rider.findByIdAndUpdate(rider.id, { tours: rider.tours });
+      } catch (e) {
+        console.log("Error in updating the riders");
+      }
     })
   );
 
@@ -343,7 +351,11 @@ const adminDetails = catchAsync(async (req, res, next) => {
 
   await Promise.all(
     allocatedRiders.map(async (rider) => {
-      await Rider.findByIdAndUpdate(rider.id, { tours: rider.tours });
+      try {
+        await Rider.findByIdAndUpdate(rider.id, { tours: rider.tours });
+      } catch (e) {
+        console.log("Error in updating the riders");
+      }
     })
   );
 
