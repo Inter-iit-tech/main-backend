@@ -1,5 +1,7 @@
 const axios = require("axios");
 const moment = require("moment");
+const reader = require("xlsx");
+
 const { Expo } = require("expo-server-sdk");
 
 const AppError = require("../utils/appError");
@@ -10,10 +12,21 @@ const Order = require("../model/orderModel");
 const Rider = require("../model/riderModel");
 
 const { getGeocode } = require("../utils/geocoding");
-
 const { sendNotification } = require("./notificationController");
+const { ORDER_ALLOCATION_SERVER_URL, DEPOT_SKU } = require("../utils/config");
 
-const baseUrl = "http://192.168.137.128:8010";
+const baseUrl = ORDER_ALLOCATION_SERVER_URL;
+
+const readExcelFile = (tempFilePath) => {
+  const file = reader.readFile(tempFilePath);
+
+  const sheetName = file.SheetNames[0];
+  const sheet = file.Sheets[sheetName];
+
+  const data = reader.utils.sheet_to_json(sheet);
+
+  return data;
+};
 
 /**
  * Start of the day function called by the cron job.
@@ -51,46 +64,24 @@ const startOfTheDayCall = async () => {
 };
 
 /**
- * Function to check if tours are equal
- * @param {[Order]} a
- * @param {[Order]} b
- * @returns Boolean
- */
-const areTourArraysEqual = (a, b) => {
-  // length of arrays
-  if (a.length !== b.length) {
-    return false;
-  }
-  // each element
-  a.forEach((ele) => {
-    if (b.findIndex((e) => e._id !== ele._id) === -1) {
-      return false;
-    }
-  });
-
-  return true;
-};
-
-/**
  * Function to create pickup object with mongoose objects.
  * @param {{names, address, product}} pickup
  * @returns Object with all mongoose properties
  */
 const createPickupOrderObject = async (pickup) => {
   try {
-    const { names, address, product } = pickup;
+    const { names, address, product, AWB } = pickup;
 
-    const randomAWB = Math.floor(1000000000 + Math.random() * 9000000000);
     const estimatedTime = new Date();
 
     const geocodeResponse = await getGeocode(address);
     const location = geocodeResponse.result.location;
 
     const dbProduct = await Product.findOne({ skuID: product });
-    const productID = dbProduct._id;
+    const productID = dbProduct?._id;
 
     const orderObject = {
-      AWB: randomAWB,
+      AWB,
       names,
       address,
       product,
@@ -100,7 +91,7 @@ const createPickupOrderObject = async (pickup) => {
       type: "pickup",
     };
 
-    return { order: orderObject, volume: dbProduct.volume };
+    return { order: orderObject, volume: dbProduct?.volume };
   } catch (e) {
     console.error(e);
     throw new AppError("Error in creating the order object", 400);
@@ -252,6 +243,8 @@ const deletePickup = catchAsync(async (req, res, next) => {
 });
 
 const formatOrder = (dbOrder) => {
+  const time = Math.abs(moment().diff(dbOrder.estimatedTime, "days"));
+
   return {
     id: dbOrder._id,
     orderType: dbOrder.type,
@@ -259,7 +252,7 @@ const formatOrder = (dbOrder) => {
       longitude: dbOrder.location.lng,
       latitude: dbOrder.location.lat,
     },
-    expectedTime: `${moment(dbOrder.estimatedTime).format("HH:mm:ss")}`,
+    expectedTime: `${time} 23:59:59`,
     package: {
       volume: Math.ceil(dbOrder.productID.volume),
     },
@@ -296,15 +289,22 @@ const formatRequestBody = (dbRiders, dbOrders, depotLocation) => {
   return requestBody;
 };
 
-const formatRequestBodyToAddPickup = (dbRiders, dbOrders, depotLocation) => {
+const formatRequestBodyToAddPickup = (
+  dbRiders,
+  dbOrders,
+  depotLocation,
+  newOrders
+) => {
   const riders = dbRiders.map((dbRider) => {
     return {
       id: dbRider._id,
       vehicle: {
-        capacity: Math.ceil(dbRider.totalBagVolume),
+        capacity: Math.ceil(dbRider.totalBagVolume)
+          ? Math.ceil(dbRider.totalBagVolume)
+          : 640000,
       },
       tours: dbRider.tours.map(formatTour),
-      headingTo: dbRider.tours?.[0]?.[0]?.orderId || depotLocation._id,
+      headingTo: dbRider.headingTo ? dbRider.headingTo : null,
     };
   });
 
@@ -318,54 +318,63 @@ const formatRequestBodyToAddPickup = (dbRiders, dbOrders, depotLocation) => {
     },
   };
 
-  const requestBody = { riders, orders, depot };
+  const requestBody = { riders, orders, depot, newOrders };
   return requestBody;
 };
 
 /**
  * Function to serve HTTP request for getting details about a day
  */
-const adminDetails = catchAsync(async (req, res, next) => {
-  const orders = await Order.find().populate({
-    path: "productID",
-    select: "volume",
-    model: "Product",
-  });
-  const riders = await Rider.find();
+const adminDetails = async (req, res, next) => {
+  try {
+    const orders = await Order.find().populate({
+      path: "productID",
+      select: "volume",
+      model: "Product",
+    });
+    const riders = await Rider.find();
 
-  const depotIndex = orders.findIndex(
-    (order) => order.product === "SKU_0000000000"
-  );
-  const depot = orders[depotIndex];
-  orders.splice(depotIndex, 1);
+    const depotIndex = orders.findIndex((order) => order.product === DEPOT_SKU);
+    const depot = orders[depotIndex];
+    orders.splice(depotIndex, 1);
 
-  const requestBody = formatRequestBody(riders, orders, depot);
+    const requestBody = formatRequestBody(riders, orders, depot);
 
-  const response = await axios.post(
-    `${baseUrl}/api/solve/startday/`,
-    requestBody
-  );
+    console.dir({ r: requestBody.riders }, { depth: null });
 
-  const { data } = response;
-  const allocatedRiders = data.riders;
+    const response = await axios.post(
+      `${baseUrl}/api/solve/startday/`,
+      requestBody
+    );
 
-  await Promise.all(
-    allocatedRiders.map(async (rider) => {
-      try {
-        await Rider.findByIdAndUpdate(rider.id, { tours: rider.tours });
-      } catch (e) {
-        console.log("Error in updating the riders");
-      }
-    })
-  );
+    const { data } = response;
+    // res.status(200).json(data);
 
-  const updatedRiders = await Rider.find();
+    const allocatedRiders = data.riders;
 
-  res.status(200).json({
-    message: "Success",
-    data: { orders, riders: updatedRiders, depot },
-  });
-});
+    await Promise.all(
+      allocatedRiders.map(async (rider) => {
+        try {
+          await Rider.findByIdAndUpdate(rider.id, { tours: rider.tours });
+        } catch (e) {
+          console.log("Error in updating the riders");
+        }
+      })
+    );
+
+    const updatedRiders = await Rider.find();
+
+    res.status(200).json({
+      message: "Success",
+      data: { orders, riders: updatedRiders, depot },
+    });
+  } catch (e) {
+    // console.log(e);
+    console.log({ e });
+    console.dir(e?.response?.data, { depth: null });
+    res.sendStatus(500);
+  }
+};
 
 const getDetails = catchAsync(async (req, res, next) => {
   const { reqQuery } = req.params;
@@ -384,6 +393,14 @@ const getDetails = catchAsync(async (req, res, next) => {
     case "riders":
       data = await Rider.find();
       break;
+
+    case "home":
+      let ordersData = {};
+      ordersData.deliveries = await Order.count({ type: "delivery" });
+      ordersData.pickups = await Order.count({ type: "pickup" });
+      let riderData = { count: await Rider.count() };
+      data = { ordersData, riderData };
+      break;
   }
 
   res.status(200).json({
@@ -392,4 +409,348 @@ const getDetails = catchAsync(async (req, res, next) => {
   });
 });
 
-module.exports = { addPickup, adminDetails, getDetails, deletePickup };
+const getRiderDetailsForAdmin = catchAsync(async (req, res, next) => {
+  const riders = await Rider.find();
+
+  await Promise.all(
+    riders.map(async (rider) => {
+      const noOfTours = rider.tours.length;
+      let arr = [];
+      for (let i = 0; i < noOfTours; i++) {
+        arr.push(`tours.${i}.orderId `);
+      }
+      let path = arr.join("");
+      path = path.slice(0, path.length - 1);
+
+      await rider.populate({
+        path,
+        model: "Order",
+        options: { strictPopulate: false },
+      });
+    })
+  );
+
+  console.dir({ riders }, { depth: 2 });
+
+  res.status(200).json({ status: "success", data: riders });
+});
+
+const sleep = (duration) => {
+  return new Promise((resolve) => {
+    setTimeout(resolve, duration);
+  });
+};
+
+const inputPickupDetails = async (req, res, next) => {
+  try {
+    const file = req.files?.rawData;
+
+    if (!file) {
+      return next(new AppError("File not found", 400));
+    }
+
+    const acceptedFileMimeTypes = [
+      "application/vnd.ms-excel",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ];
+
+    if (!acceptedFileMimeTypes.includes(file.mimetype)) {
+      return next(new AppError("Please select an Excel File", 400));
+    }
+
+    const data = readExcelFile(file.tempFilePath);
+    const newOrders = [];
+
+    let splicedData = [];
+    while (data.length > 0) {
+      splicedData.push(data.splice(0, 50));
+    }
+
+    let correct = 0;
+    let incorrect = 0;
+
+    const callGeolocationApi = async () => {
+      for (const array of splicedData) {
+        await Promise.all(
+          array.map(async (order) => {
+            try {
+              const pickup = await createPickupOrderObject(order);
+              if (pickup?.order?.productID) {
+                const createdOrder = await Order.create(pickup.order);
+
+                const newOrder = {
+                  ...formatOrder(createdOrder._doc),
+                  package: { volume: Math.ceil(pickup.volume) },
+                };
+
+                newOrders.push(newOrder);
+              }
+            } catch (err) {
+              console.error(err);
+            }
+          })
+        );
+        await sleep(1000);
+      }
+    };
+
+    await callGeolocationApi();
+
+    // console.log({ correct, incorrect });
+
+    // const res = [];
+    // for (const array of splicedData) {
+    //   for (const order of array) {
+    //     res.push(order);
+    //   }
+    // }
+
+    // await Promise.all(
+    //   data.map(async (order) => {
+    //     const pickup = await createPickupOrderObject(order);
+    //     if (pickup?.order?.productID) {
+    //       const createdOrder = await Order.create(pickup.order);
+
+    //       const newOrder = {
+    //         ...formatOrder(createdOrder._doc),
+    //         package: { volume: Math.ceil(pickup.volume) },
+    //       };
+
+    //       newOrders.push(newOrder);
+    //       await sleep(200);
+    //     }
+    //   })
+    // );
+
+    const riders = await Rider.find();
+
+    const orders = await Order.find({
+      isDelivered: false,
+      type: "delivery",
+    }).populate({
+      path: "productID",
+      model: "Product",
+    });
+
+    const depotIndex = orders.findIndex(
+      (order) => order.product === "SKU_0000000000"
+    );
+    const depot = orders[depotIndex];
+
+    const requestBody = {
+      ...formatRequestBodyToAddPickup(riders, orders, depot, newOrders),
+      currentTime: "10:00:00",
+    };
+
+    console.dir({ requestBody: requestBody }, { depth: null });
+
+    // Making request
+    const response = await axios.post(
+      `${baseUrl}/api/solve/addorder/`,
+      requestBody
+    );
+
+    console.log({ response });
+
+    const allocatedRiders = response?.data?.riders;
+
+    await Promise.all(
+      allocatedRiders?.map(async (rider) => {
+        try {
+          await Rider.findByIdAndUpdate(rider.id, { tours: rider.tours });
+        } catch (e) {
+          console.log("Error in updating the riders");
+        }
+      })
+    );
+
+    const updatedRiders = await Rider.find();
+
+    res.status(200).json({
+      message: "Success",
+      data: { orders, riders: updatedRiders, depot },
+    });
+  } catch (err) {
+    console.dir({ r: err?.response?.data }, { depth: null });
+    res.status(500).json({
+      message: err.message,
+    });
+  }
+};
+
+const transformTimingToSeconds = (timeString) => {
+  const spl = timeString.split(":");
+  let seconds = 0;
+  seconds =
+    seconds +
+    parseInt(spl[0]) * 60 * 60 +
+    parseInt(spl[1]) * 60 +
+    parseInt(spl[2]);
+  return seconds;
+};
+
+const simulateForDuration = async (timeDuration) => {
+  const riders = await Rider.find();
+
+  await Promise.all(
+    riders.map(async (rider) => {
+      let timeElapsed = 0;
+      let noOfOrdersRemoved = 0;
+      let tours = rider.tours;
+
+      let headingTo = "";
+
+      for (let tour of tours) {
+        for (let order of tour) {
+          if (!(order.timing === "09:00:00")) {
+            if (timeElapsed <= timeDuration) {
+              const timing = transformTimingToSeconds(order.timing);
+              if (timeElapsed + timing <= timeDuration) {
+                timeElapsed += timing;
+                noOfOrdersRemoved++;
+              } else {
+                console.log({ orderIn: order });
+                headingTo = order.orderId._id;
+                break;
+              }
+            }
+          }
+        }
+        rider.headingTo = headingTo;
+        console.log({ riderID: rider._id, noOfOrdersRemoved, headingTo });
+        await rider.save();
+      }
+    })
+  );
+};
+
+const simulateForFirstHour = async (req, res, next) => {
+  await simulateForDuration(60 * 60);
+  const riders = await Rider.find();
+  res.status(200).json({ data: riders });
+};
+
+// const simulateForFirstHour = async (req, res, next) => {
+//   const riders = await Rider.find();
+//   const timeDuration = 1 * 60 * 60;
+
+//   await Promise.all(
+//     riders.map(async (rider) => {
+//       let timeElapsedInMinutes = 0;
+//       let noOfOrdersRemoved = 0;
+//       let tours = rider.tours;
+//       // console.log({ l: tours[0].length });
+//       let headingTo = "";
+
+//       const ordersDelivered = [];
+//       for (let tour of tours) {
+//         for (let order of tour) {
+//           if (order.timing !== "09:00:00") {
+//             const timing = transformTimingToSeconds(order.timing);
+//             // console.log({ timeElapsedInMinutes, timeDuration, timing });
+
+//             if (timeElapsedInMinutes < timeDuration) {
+//               if (timeElapsedInMinutes + timing <= timeDuration) {
+//                 timeElapsedInMinutes += timing;
+//                 noOfOrdersRemoved++;
+//                 ordersDelivered.push(order.orderId._id);
+//                 console.log({ orderId: order.orderId });
+//               } else {
+//                 console.log({ orderId: order.orderId });
+//                 headingTo = order.orderId._id;
+//                 console.log("Done In");
+//                 break;
+//               }
+//             } else {
+//               console.log("Done Out");
+//               break;
+//             }
+//           }
+//         }
+
+//         if (tour.length === 0) {
+//           console.log("Tour finished");
+//           tours.splice(0, 1);
+//           headingTo = "";
+//         }
+//       }
+
+//       console.log({
+//         noOfOrdersRemoved,
+//         riderID: rider._id,
+//         headingTo,
+//       });
+
+//       // await rider.save();
+//     })
+//   );
+
+//   res.status(200).json({ riders });
+// };
+
+// const simulateTourForTimeForRider = (timeDuration, rider) => {
+//   // console.log({ timeDuration, rider });
+
+//   let headingTo = "";
+//   let timeElapsedInMinutes = 0;
+//   let noOfOrdersRemoved = 0;
+//   let tours = rider.tours;
+//   // console.log({ l: tours[0].length });
+
+//   const ordersDelivered = [];
+//   for (let tour of tours) {
+//     for (let order of tour) {
+//       if (order.timing !== "09:00:00") {
+//         const timing = transformTimingToSeconds(order.timing);
+//         // console.log({ timeElapsedInMinutes, timeDuration, timing });
+//         if (timeElapsedInMinutes < timeDuration) {
+//           if (timeElapsedInMinutes + timing <= timeDuration) {
+//             timeElapsedInMinutes += timing;
+//             noOfOrdersRemoved++;
+
+//             ordersDelivered.push(order.orderId._id);
+//             // console.log({ orderId: order.orderId });
+//           } else {
+//             // headingTo = order.orderId._id;
+//             console.log({ orderId: order.orderId });
+
+//             console.log("Done In");
+//             break;
+//           }
+//         } else {
+//           console.log("Done Out");
+//           break;
+//         }
+//       }
+//     }
+
+//     if (tour.length === 0) {
+//       console.log("Tour finished");
+//       tours.splice(0, 1);
+//       headingTo = "";
+//     }
+//   }
+
+//   console.log({
+//     noOfOrdersRemoved,
+//     riderID: rider?._id,
+//     headingTo,
+//   });
+//   return headingTo;
+// };
+
+const demo = async (req, res, next) => {
+  await Order.deleteMany({ type: "pickup" });
+  res.sendStatus(204);
+};
+
+module.exports = {
+  addPickup,
+  adminDetails,
+  getDetails,
+  deletePickup,
+  inputPickupDetails,
+  demo,
+  simulateForFirstHour,
+  getRiderDetailsForAdmin,
+};

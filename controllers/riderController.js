@@ -5,7 +5,12 @@ const Product = require("../model/productModel");
 const Order = require("../model/orderModel");
 const Rider = require("../model/riderModel");
 
-const acceptableDistanceInKm = 0.5;
+const {
+  MAXIMUM_ACCEPTABLE_DISTANCE_IN_KM,
+  DEPOT_SKU,
+} = require("../utils/config");
+
+const acceptableDistanceInKm = MAXIMUM_ACCEPTABLE_DISTANCE_IN_KM;
 
 /**
  * Get the distance between two coordinates in km
@@ -49,9 +54,10 @@ const getRiderDetailsOfTheDay = catchAsync(async (req, res, next) => {
 
   const rider = await Rider.findById(riderID);
 
-  if (!rider) {
-    return next(new AppError("Rider not found", 404));
-  }
+  // if (!rider) {
+  //   return next(new AppError("Rider not found", 404));
+  // }
+  console.log({ rider });
 
   const noOfTours = rider.tours.length;
   let arr = [];
@@ -61,7 +67,11 @@ const getRiderDetailsOfTheDay = catchAsync(async (req, res, next) => {
   let path = arr.join("");
   path = path.slice(0, path.length - 1);
 
-  await rider.populate({ path, model: "Order" });
+  await rider.populate({
+    path,
+    model: "Order",
+    options: { strictPopulate: false },
+  });
 
   res.status(200).json({
     message: "Fetched rider's details successfully",
@@ -102,7 +112,7 @@ const markOrderStatus = catchAsync(async (req, res, next) => {
     tours.splice(0, 1);
   }
 
-  const depot_SKU = "SKU_0000000000";
+  const depot_SKU = DEPOT_SKU;
   const depot = await Order.findOne({ product: depot_SKU });
   const depotOrderID = depot._id;
 
