@@ -181,13 +181,13 @@ const inputProductDetails = catchAsync(async (req, res, next) => {
     return next(new AppError("Product not found", 400));
   }
 
-  const { skuID, volume, deadWeight, length, breadth, height } = product;
+  const { AWB, skuID, volume, deadWeight, length, breadth, height } = product;
 
   if (!skuID || !volume || !deadWeight) {
     return next(new AppError("All mandatory product details not present", 400));
   }
 
-  const data = {
+  const productData = {
     skuID,
     volume,
     deadWeight,
@@ -196,13 +196,57 @@ const inputProductDetails = catchAsync(async (req, res, next) => {
     height,
   };
 
-  const newProduct = await Product.create(data);
+  // Check if a product with the same SKU exists, and mark erroneous products
+  const volumeErrorWeightage = 0.1;
+  const deadWeightErrorWeightage = 0.9;
+  const errorLimitInPercentage = 5;
 
-  console.log({ newProduct });
+  let responseMessage = "";
+  const orderData = { AWB, volume, deadWeight, isErroneous: false };
+  const previousData = await Product.findOne(
+    { skuID: skuID },
+    "skuID volume deadWeight orders"
+  );
+
+  if (previousData) {
+    const volumeError = Math.abs(
+      ((volume - previousData.volume) / previousData.volume) * 100
+    );
+    const deadWeightError = Math.abs(
+      ((deadWeight - previousData.deadWeight) / previousData.deadWeight) * 100
+    );
+
+    const netError = (
+      volumeErrorWeightage * volumeError +
+      deadWeightErrorWeightage * deadWeightError
+    ).toFixed(2);
+
+    if (netError > errorLimitInPercentage) {
+      orderData.isErroneous = true;
+      responseMessage = `Product with SKU:${skuID} exists. Error of ${netError}% was detected, and a new order with the same SKU was inserted`;
+    } else {
+      responseMessage = `Product with SKU:${skuID} exists. New order with the same SKU was successfully inserted.`;
+    }
+
+    const update = {
+      orders: [...previousData.orders, orderData],
+    };
+
+    const newProduct = await Product.findOneAndUpdate(previousData._id, update);
+    console.log({ newProduct });
+  } else {
+    const product = {
+      ...productData,
+      orders: [orderData],
+    };
+    const newProduct = await Product.create(product);
+    responseMessage = `New product details with SKU:${newProduct.skuID} inserted successfully`;
+    console.log({ newProduct });
+  }
 
   res.status(201).json({
     status: "success",
-    message: `Product details with SKU:${newProduct.skuID} inserted successfully`,
+    message: responseMessage,
   });
 });
 
