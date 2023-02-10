@@ -1,5 +1,7 @@
 const axios = require("axios");
 const moment = require("moment");
+const reader = require("xlsx");
+
 const { Expo } = require("expo-server-sdk");
 
 const AppError = require("../utils/appError");
@@ -10,46 +12,21 @@ const Order = require("../model/orderModel");
 const Rider = require("../model/riderModel");
 
 const { getGeocode } = require("../utils/geocoding");
-
 const { sendNotification } = require("./notificationController");
+const { ORDER_ALLOCATION_SERVER_URL, DEPOT_SKU } = require("../utils/config");
 
-const baseUrl = "http://192.168.137.128:8010";
+const baseUrl = ORDER_ALLOCATION_SERVER_URL;
 
-/**
- * Function to send notification to the mobile device.
- * @param {String} pushToken
- * @param {String} message
- * @param {Object} data
- */
-// const sendNotification = async (pushToken, message, data) => {
-//   // Expo Client
-//   const expo = new Expo();
+const readExcelFile = (tempFilePath) => {
+  const file = reader.readFile(tempFilePath);
 
-//   const messages = [
-//     {
-//       to: pushToken,
-//       sound: "default",
-//       body: message,
-//       data: data,
-//     },
-//   ];
+  const sheetName = file.SheetNames[0];
+  const sheet = file.Sheets[sheetName];
 
-//   const chunks = expo.chunkPushNotifications(messages);
-//   const tickets = [];
+  const data = reader.utils.sheet_to_json(sheet);
 
-//   // Send chunks of notification
-//   (async () => {
-//     for (let chunk of chunks) {
-//       try {
-//         let ticketChunk = await expo.sendPushNotificationsAsync(chunk);
-//         console.log(ticketChunk);
-//         tickets.push(...ticketChunk);
-//       } catch (error) {
-//         console.error(error);
-//       }
-//     }
-//   })();
-// };
+  return data;
+};
 
 /**
  * Start of the day function called by the cron job.
@@ -87,46 +64,25 @@ const startOfTheDayCall = async () => {
 };
 
 /**
- * Function to check if tours are equal
- * @param {[Order]} a
- * @param {[Order]} b
- * @returns Boolean
- */
-const areTourArraysEqual = (a, b) => {
-  // length of arrays
-  if (a.length !== b.length) {
-    return false;
-  }
-  // each element
-  a.forEach((ele) => {
-    if (b.findIndex((e) => e._id !== ele._id) === -1) {
-      return false;
-    }
-  });
-
-  return true;
-};
-
-/**
  * Function to create pickup object with mongoose objects.
+ * @async
  * @param {{names, address, product}} pickup
  * @returns Object with all mongoose properties
  */
 const createPickupOrderObject = async (pickup) => {
   try {
-    const { names, address, product } = pickup;
+    const { names, address, product, AWB } = pickup;
 
-    const randomAWB = Math.floor(1000000000 + Math.random() * 9000000000);
     const estimatedTime = new Date();
 
     const geocodeResponse = await getGeocode(address);
     const location = geocodeResponse.result.location;
 
     const dbProduct = await Product.findOne({ skuID: product });
-    const productID = dbProduct._id;
+    const productID = dbProduct?._id;
 
     const orderObject = {
-      AWB: randomAWB,
+      AWB,
       names,
       address,
       product,
@@ -136,10 +92,10 @@ const createPickupOrderObject = async (pickup) => {
       type: "pickup",
     };
 
-    return { order: orderObject, volume: dbProduct.volume };
+    return { order: orderObject, volume: dbProduct?.volume };
   } catch (e) {
     console.error(e);
-    throw new AppError("Error in creating the order object", 400);
+    throw new AppError("Error in creating the order object" + e.message, 400);
   }
 };
 
@@ -171,11 +127,6 @@ const addPickup = catchAsync(async (req, res, next) => {
     ...formatRequestBodyToAddPickup(riders, orders, depot),
     newOrder,
   };
-  // console.dir(requestBody, { depth: null });
-
-  // requestBody.riders.map(rider => {
-  //   console.dir(rider.tours, { depth: null })
-  // })
 
   // Making request
   const response = await axios.post(
@@ -183,9 +134,7 @@ const addPickup = catchAsync(async (req, res, next) => {
     requestBody
   );
 
-  // console.log({ response });
-
-  // check if any rider has updatedcurrenttour true
+  // check if any rider has updatedCurrentTour true
   const riderWithUpdatedCurrentTour = response?.data.riders.find(
     (rider) => rider.updateCurrentTour === true
   );
@@ -207,11 +156,15 @@ const addPickup = catchAsync(async (req, res, next) => {
   }
 
   // Updating riders tours
-  // await Promise.all(
-  //   response.rider.map(async (rider) => {
-  //     await Rider.findByIdAndUpdate(rider.id, { tours: rider.tours });
-  //   })
-  // );
+  await Promise.all(
+    response.rider.map(async (rider) => {
+      try {
+        await Rider.findByIdAndUpdate(rider.id, { tours: rider.tours });
+      } catch (e) {
+        console.log("Error in updating the riders");
+      }
+    })
+  );
 
   res.status(200).json({
     message: responseMsg,
@@ -240,13 +193,7 @@ const deletePickup = catchAsync(async (req, res, next) => {
     delOrderId: orderId,
   };
 
-  console.dir(requestBody, { depth: null });
-
-  // res.send(requestBody);
-
-  // requestBody.riders.map(rider => {
-  //   console.dir(rider.tours, { depth: null })
-  // })
+  // console.dir(requestBody, { depth: null });
 
   // Making request
   const response = await axios.post(
@@ -256,7 +203,7 @@ const deletePickup = catchAsync(async (req, res, next) => {
 
   // console.log({ response });
 
-  // check if any rider has updatedcurrenttour true
+  // check if any rider has updated_current_tour true
   const riderWithUpdatedCurrentTour = response?.data.riders.find(
     (rider) => rider.updateCurrentTour === true
   );
@@ -278,11 +225,15 @@ const deletePickup = catchAsync(async (req, res, next) => {
   }
 
   // Updating riders tours
-  // await Promise.all(
-  //   response.rider.map(async (rider) => {
-  //     await Rider.findByIdAndUpdate(rider.id, { tours: rider.tours });
-  //   })
-  // );
+  await Promise.all(
+    response.rider.map(async (rider) => {
+      try {
+        await Rider.findByIdAndUpdate(rider.id, { tours: rider.tours });
+      } catch (e) {
+        console.log("Error in updating the riders");
+      }
+    })
+  );
 
   res.status(200).json({
     message: responseMsg,
@@ -293,6 +244,8 @@ const deletePickup = catchAsync(async (req, res, next) => {
 });
 
 const formatOrder = (dbOrder) => {
+  const time = Math.abs(moment().diff(dbOrder.estimatedTime, "days"));
+
   return {
     id: dbOrder._id,
     orderType: dbOrder.type,
@@ -300,7 +253,26 @@ const formatOrder = (dbOrder) => {
       longitude: dbOrder.location.lng,
       latitude: dbOrder.location.lat,
     },
-    expectedTime: `${moment(dbOrder.estimatedTime).format("HH:mm:ss")}`,
+    expectedTime: `${time} 23:59:59`,
+    package: {
+      volume: Math.ceil(dbOrder.productID.volume),
+    },
+  };
+};
+
+const formatNewOrder = (dbOrder) => {
+  // const time = Math.abs(moment().diff(dbOrder.estimatedTime, "days"));
+
+  console.log({ dbOrder });
+
+  return {
+    id: dbOrder._id,
+    orderType: dbOrder.type,
+    point: {
+      longitude: dbOrder.location.longitude,
+      latitude: dbOrder.location.latitude,
+    },
+    expectedTime: `0 23:59:59`,
     package: {
       volume: Math.ceil(dbOrder.productID.volume),
     },
@@ -337,15 +309,22 @@ const formatRequestBody = (dbRiders, dbOrders, depotLocation) => {
   return requestBody;
 };
 
-const formatRequestBodyToAddPickup = (dbRiders, dbOrders, depotLocation) => {
+const formatRequestBodyToAddPickup = (
+  dbRiders,
+  dbOrders,
+  depotLocation,
+  newOrders
+) => {
   const riders = dbRiders.map((dbRider) => {
     return {
       id: dbRider._id,
       vehicle: {
-        capacity: Math.ceil(dbRider.totalBagVolume),
+        capacity: Math.ceil(dbRider.totalBagVolume)
+          ? Math.ceil(dbRider.totalBagVolume)
+          : 640000,
       },
       tours: dbRider.tours.map(formatTour),
-      headingTo: dbRider.tours?.[0]?.[0]?.orderId || depotLocation._id,
+      headingTo: dbRider.headingTo ? dbRider.headingTo : null,
     };
   });
 
@@ -359,52 +338,86 @@ const formatRequestBodyToAddPickup = (dbRiders, dbOrders, depotLocation) => {
     },
   };
 
-  const requestBody = { riders, orders, depot };
+  const newO = newOrders.map(formatNewOrder);
+
+  const requestBody = { riders, orders, depot, newOrders: newO };
   return requestBody;
 };
 
 /**
  * Function to serve HTTP request for getting details about a day
  */
-const adminDetails = catchAsync(async (req, res, next) => {
-  const orders = await Order.find().populate({
-    path: "productID",
-    select: "volume",
-    model: "Product",
-  });
-  const riders = await Rider.find();
+const adminDetails = async (req, res, next) => {
+  let requestBody;
+  try {
+    const orders = await Order.find({ type: "delivery" }).populate({
+      path: "productID",
+      select: "volume",
+      model: "Product",
+    });
+    const riders = await Rider.find();
 
-  const depotIndex = orders.findIndex(
-    (order) => order.product === "SKU_0000000000"
-  );
-  const depot = orders[depotIndex];
-  orders.splice(depotIndex, 1);
+    const depotIndex = orders.findIndex((order) => order.product === DEPOT_SKU);
+    const depot = orders[depotIndex];
+    orders.splice(depotIndex, 1);
 
-  const requestBody = formatRequestBody(riders, orders, depot);
+    requestBody = formatRequestBody(riders, orders, depot);
 
-  // console.dir({ requestBody }, { depth: null })
+    console.dir({ r: requestBody.riders }, { depth: null });
 
-  const response = await axios.post(
-    `${baseUrl}/api/solve/startday/`,
-    requestBody
-  );
+    const response = await axios.post(
+      `${baseUrl}/api/solve/startday/`,
+      requestBody
+    );
 
-  const { data } = response;
-  const allocatedRiders = data.riders;
+    console.log({ response });
 
-  await Promise.all(
-    allocatedRiders.map(async (rider) => {
-      await Rider.findByIdAndUpdate(rider.id, { tours: rider.tours });
-    })
-  );
+    const ordersSent = orders.length;
 
-  const updatedRiders = await Rider.find();
+    let orderInRiders = 0;
 
-  res.status(200).json({
-    message: "Success",
-    data: { orders, riders: updatedRiders, depot },
-  });
-});
+    const allocatedRiders = response.data.riders;
+
+    allocatedRiders.forEach((rider) => {
+      rider.tours.forEach((tour) => {
+        orderInRiders += tour.length - 2;
+      });
+    });
+
+    // const { data } = response;
+    // res.status(200).json(data);
+
+    // const allocatedRiders = data.riders;
+
+    // await Promise.all(
+    //   allocatedRiders.map(async (rider) => {
+    //     try {
+    //       await Rider.findByIdAndUpdate(rider.id, { tours: rider.tours });
+    //     } catch (e) {
+    //       console.log("Error in updating the riders");
+    //     }
+    //   })
+    // );
+
+    // const updatedRiders = await Rider.find();
+
+    res.status(200).json({
+      message: "Success",
+      // data: { orders, riders: updatedRiders, depot },
+      data: {
+        ordersSent,
+        orderInRiders,
+        requestBody,
+        responseBody: response.data,
+      },
+    });
+  } catch (e) {
+    // console.log(e);
+    console.log({ e });
+    console.dir(e?.response?.data, { depth: null });
+    res.status(500).json({ error: e?.response?.data, requestBody });
+  }
+};
 
 const getDetails = catchAsync(async (req, res, next) => {
   const { reqQuery } = req.params;
@@ -423,6 +436,14 @@ const getDetails = catchAsync(async (req, res, next) => {
     case "riders":
       data = await Rider.find();
       break;
+
+    case "home":
+      let ordersData = {};
+      ordersData.deliveries = await Order.count({ type: "delivery" });
+      ordersData.pickups = await Order.count({ type: "pickup" });
+      let riderData = { count: await Rider.count() };
+      data = { ordersData, riderData };
+      break;
   }
 
   res.status(200).json({
@@ -431,4 +452,49 @@ const getDetails = catchAsync(async (req, res, next) => {
   });
 });
 
-module.exports = { addPickup, adminDetails, getDetails, deletePickup };
+const getRiderDetailsForAdmin = catchAsync(async (req, res, next) => {
+  const riders = await Rider.find();
+
+  await Promise.all(
+    riders.map(async (rider) => {
+      const noOfTours = rider.tours.length;
+      let arr = [];
+      for (let i = 0; i < noOfTours; i++) {
+        arr.push(`tours.${i}.orderId `);
+      }
+      let path = arr.join("");
+      path = path.slice(0, path.length - 1);
+      if (path !== "") {
+        await rider.populate({
+          path,
+          model: "Order",
+          options: { strictPopulate: false },
+        });
+      }
+    })
+  );
+
+  console.dir({ riders }, { depth: 2 });
+
+  res.status(200).json({ status: "success", data: riders });
+});
+
+const sleep = (duration) => {
+  return new Promise((resolve) => {
+    setTimeout(resolve, duration);
+  });
+};
+
+const clearPickups = async (req, res, next) => {
+  await Order.deleteMany({ type: "pickup" });
+  res.sendStatus(204);
+};
+
+module.exports = {
+  addPickup,
+  adminDetails,
+  getDetails,
+  deletePickup,
+  clearPickups,
+  getRiderDetailsForAdmin,
+};

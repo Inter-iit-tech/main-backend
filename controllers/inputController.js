@@ -9,6 +9,7 @@ const Order = require("../model/orderModel");
 const Rider = require("../model/riderModel");
 
 const { getGeocode } = require("../utils/geocoding");
+const { DEPOT_SKU } = require("../utils/config");
 
 const randomIntFromInterval = (min, max) => {
   return Math.floor(Math.random() * (max - min + 1) + min);
@@ -35,20 +36,60 @@ const readExcelFile = (tempFilePath) => {
  * @param {[Objects]} data
  */
 const convertAddressToGeocode = async (data) => {
-  try {
-    await Promise.all(
-      data.map(async (order) => {
-        if (order.address) {
-          const geocodeResponse = await getGeocode(order.address);
-          order.location = geocodeResponse.result.location;
-        } else {
-          console.log(`Address not present in the order details ${order.AWB}`);
-        }
-      })
-    );
-  } catch (e) {
-    console.log(e.message);
+  let splicedData = [];
+  while (data.length > 0) {
+    splicedData.push(data.splice(0, 50));
   }
+
+  let correct = 0;
+  let incorrect = 0;
+
+  const callGeolocationApi = async () => {
+    for (const array of splicedData) {
+      await Promise.all(
+        array.map(async (order) => {
+          try {
+            if (order.address) {
+              const geocodeResponse = await getGeocode(order.address);
+              order.location = geocodeResponse.result.location;
+              correct++;
+            } else {
+              console.log(
+                `Address not present in the order details ${order.AWB}`
+              );
+            }
+          } catch (err) {
+            console.log(err.message);
+            console.log(
+              `Cannot find address in the order details ${order.AWB}`
+            );
+            incorrect++;
+          }
+        })
+      );
+      await sleep(1000);
+    }
+  };
+
+  await callGeolocationApi();
+
+  console.log({ correct, incorrect });
+
+  const res = [];
+  for (const array of splicedData) {
+    for (const order of array) {
+      res.push(order);
+    }
+  }
+
+  console.log({ res });
+  return res;
+};
+
+const sleep = (duration) => {
+  return new Promise((resolve) => {
+    setTimeout(resolve, duration);
+  });
 };
 
 /**
@@ -59,11 +100,15 @@ const getProductIDs = async (orders) => {
   try {
     await Promise.all(
       orders.map(async (order) => {
-        if (order.product_id) {
-          const product = await Product.findOne({ skuID: order.product_id });
-          order.productID = product._id;
-        } else {
-          console.log(`Product ID is not in the order details ${order.AWB}`);
+        try {
+          if (order.product_id) {
+            const product = await Product.findOne({ skuID: order.product_id });
+            order.productID = product._id;
+          } else {
+            console.log(`Product ID is not in the order details ${order.AWB}`);
+          }
+        } catch (err) {
+          console.log(err);
         }
       })
     );
@@ -91,20 +136,28 @@ const inputDeliveryPoints = catchAsync(async (req, res, next) => {
     return next(new AppError("Please select an Excel File", 400));
   }
 
-  const data = readExcelFile(file.tempFilePath);
+  let data = readExcelFile(file.tempFilePath);
 
-  await convertAddressToGeocode(data);
+  data = await convertAddressToGeocode(data);
 
   await getProductIDs(data);
 
-  const newOrders = data.map((order) => {
+  console.log({ data });
+
+  const filteredOrders = data.filter((order) => {
+    return !!order.address;
+  });
+
+  const newOrders = filteredOrders.map((order) => {
     return {
       AWB: order.AWB,
       names: order.names,
       product: order.product_id,
       productID: order.productID,
       address: order.address,
-      estimatedTime: moment().add(randomIntFromInterval(200, 600), "m"), // TODO: this should be the estimated time from the input
+      estimatedTime: order.EDD
+        ? moment(order.EDD, "DD-MM-YYYY")
+        : moment().format("DD-MM-YYYY"),
       location: order.location,
     };
   });
@@ -247,14 +300,14 @@ const inputDepotLocation = catchAsync(async (req, res, next) => {
   const location = req.body.location;
 
   const depotProduct = await Product.create({
-    skuID: "SKU_0000000000",
+    skuID: DEPOT_SKU,
     volume: 20,
   });
 
   const depotOrder = await Order.create({
     AWB: 00000000000,
     names: "Depot Location",
-    product: "SKU_0000000000",
+    product: DEPOT_SKU,
     productID: depotProduct._id,
     address: "Depot Location",
     estimatedTime: moment().add(randomIntFromInterval(200, 600), "m"),
@@ -266,6 +319,38 @@ const inputDepotLocation = catchAsync(async (req, res, next) => {
     data: { depotOrder, depotProduct },
   });
 });
+
+const inputPickupDetails = async (req, res, next) => {
+  try {
+    const file = req.files?.rawData;
+
+    if (!file) {
+      return next(new AppError("File not found", 400));
+    }
+
+    const acceptedFileMimeTypes = [
+      "application/vnd.ms-excel",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ];
+
+    if (!acceptedFileMimeTypes.includes(file.mimetype)) {
+      return next(new AppError("Please select an Excel File", 400));
+    }
+
+    const data = readExcelFile(file.tempFilePath);
+
+    await Promise.all(
+      data.map(async (order) => {
+        const pickup = await createPickupOrderObject(order);
+      })
+    );
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({
+      message: err.message,
+    });
+  }
+};
 
 module.exports = {
   inputDeliveryPoints,

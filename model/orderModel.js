@@ -43,6 +43,7 @@ const orderSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    addTime: { type: String },
   },
   {
     toJSON: { virtuals: true },

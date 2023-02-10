@@ -5,7 +5,12 @@ const Product = require("../model/productModel");
 const Order = require("../model/orderModel");
 const Rider = require("../model/riderModel");
 
-const acceptableDistanceInKm = 0.5;
+const {
+  MAXIMUM_ACCEPTABLE_DISTANCE_IN_KM,
+  DEPOT_SKU,
+} = require("../utils/config");
+
+const acceptableDistanceInKm = MAXIMUM_ACCEPTABLE_DISTANCE_IN_KM;
 
 /**
  * Get the distance between two coordinates in km
@@ -49,9 +54,10 @@ const getRiderDetailsOfTheDay = catchAsync(async (req, res, next) => {
 
   const rider = await Rider.findById(riderID);
 
-  if (!rider) {
-    return next(new AppError("Rider not found", 404));
-  }
+  // if (!rider) {
+  //   return next(new AppError("Rider not found", 404));
+  // }
+  console.log({ rider });
 
   const noOfTours = rider.tours.length;
   let arr = [];
@@ -61,7 +67,11 @@ const getRiderDetailsOfTheDay = catchAsync(async (req, res, next) => {
   let path = arr.join("");
   path = path.slice(0, path.length - 1);
 
-  await rider.populate({ path, model: "Order" });
+  await rider.populate({
+    path,
+    model: "Order",
+    options: { strictPopulate: false },
+  });
 
   res.status(200).json({
     message: "Fetched rider's details successfully",
@@ -80,7 +90,7 @@ const markOrderStatus = catchAsync(async (req, res, next) => {
   const location = req.body.order.location;
   const userLocation = req.body.order.riderLocation;
 
-  if (!riderID || !orderID || !status) {
+  if (!riderID || !orderID) {
     return next(new AppError("Bad Request", 400));
   }
 
@@ -97,28 +107,35 @@ const markOrderStatus = catchAsync(async (req, res, next) => {
   }
 
   const tours = rider?.tours;
-
-  console.log({ tours });
-
   tours[0].splice(0, 1);
-
   if (tours[0].length < 0) {
     tours.splice(0, 1);
   }
-  console.log({ tours });
 
-  const updateObject = { isDelivered: status, isFakeAttempt: false };
+  const depot_SKU = DEPOT_SKU;
+  const depot = await Order.findOne({ product: depot_SKU });
+  const depotOrderID = depot._id;
 
-  // TODO: Get location of rider and check if the rider is the acceptable distance from the drop location.
-  const dist = getDistanceFromLatLonInKm(location, userLocation);
-  if (dist > acceptableDistanceInKm) {
-    updateObject.isFakeAttempt = true;
-    console.log("This is a fake attempt");
+  console.log({ depot, depotOrderID });
+
+  if (!depotOrderID.equals(orderID)) {
+    const updateObject = { isDelivered: status, isFakeAttempt: false };
+
+    // TODO: Get location of rider and check if the rider is the acceptable distance from the drop location.
+    const dist = getDistanceFromLatLonInKm(location, userLocation);
+    if (dist > acceptableDistanceInKm) {
+      updateObject.isFakeAttempt = true;
+      console.log("This is a fake attempt");
+    }
+    const updateOrder = await Order.findByIdAndUpdate(orderID, updateObject);
   }
 
-  const updateOrder = await Order.findByIdAndUpdate(orderID, updateObject);
+  const deliveredOrders = rider.deliveredOrders || [];
+  deliveredOrders.push(orderID);
+
   const updateRider = await Rider.findByIdAndUpdate(riderID, {
-    tours: newTour,
+    tours,
+    deliveredOrders,
   });
 
   res.status(200).json({

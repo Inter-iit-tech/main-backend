@@ -12,6 +12,8 @@ const globalErrorHandler = require("./controllers/errorController");
 const inputRouter = require("./routes/inputRoutes");
 const adminRouter = require("./routes/adminRoutes");
 const riderRouter = require("./routes/riderRoutes");
+const pickupRouter = require("./routes/pickupRoutes");
+const outputRouter = require("./routes/outputRoutes");
 
 const app = express();
 
@@ -28,6 +30,8 @@ app.use(middleware.requestLogger);
 app.use("/api/v1/input", inputRouter);
 app.use("/api/v1/admin", adminRouter);
 app.use("/api/v1/rider", riderRouter);
+app.use("/api/v1/pickup", pickupRouter);
+app.use("/api/v1/output", outputRouter);
 
 app.all("*", (req, res, next) => {
   next(new AppError(`Can't find ${req.originalUrl} on this server!`, 404));

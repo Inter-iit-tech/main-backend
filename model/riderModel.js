@@ -24,10 +24,14 @@ const riderSchema = new mongoose.Schema(
         },
       ],
     ],
-    nextDeliveryLocation: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Order",
+
+    headingTo: {
+      type: String,
     },
+    riderID: {
+      type: String,
+    },
+    deliveredOrders: [{ type: mongoose.Schema.Types.ObjectId, ref: "Order" }],
   },
   {
     toJSON: { virtuals: true },
