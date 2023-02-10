@@ -24,6 +24,14 @@ const productSchema = new mongoose.Schema(
     height: {
       type: Number,
     },
+    orders: [
+      {
+        AWB: String,
+        isErroneous: Boolean,
+        volume: Number,
+        deadWeight: Number,
+      },
+    ],
   },
   {
     toJSON: { virtuals: true },
