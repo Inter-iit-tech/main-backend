@@ -5,6 +5,8 @@ const Rider = require("../model/riderModel");
 const converter = require("json-2-csv");
 const fs = require("fs");
 
+const { OSRM_MLD_SERVER_URL } = require("../utils/config");
+
 const convertToCSV = async (output) => {
   try {
     // convert JSON array to CSV string
@@ -52,7 +54,7 @@ const outputFormat = async (rider) => {
 };
 
 const generateOSRMUri = (orders) => {
-  const baseURL = "http://192.168.137.128:5000";
+  const baseURL = OSRM_MLD_SERVER_URL;
   const endPoint = "route/v1/driving";
 
   const queryParams = {
