@@ -7,6 +7,7 @@ const { PORT, MONGODB_URI } = require("./utils/config");
 const server = http.createServer(app);
 
 console.log("Starting app..");
+console.log("MONGODB_URI: ", MONGODB_URI);
 console.log("Waiting for connection to MongoDB");
 
 mongoose.set("strictQuery", false);
