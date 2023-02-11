@@ -384,22 +384,17 @@ const adminDetails = async (req, res, next) => {
       });
     });
 
-    // const { data } = response;
-    // res.status(200).json(data);
+    await Promise.all(
+      allocatedRiders.map(async (rider) => {
+        try {
+          await Rider.findByIdAndUpdate(rider.id, { tours: rider.tours });
+        } catch (e) {
+          console.log("Error in updating the riders");
+        }
+      })
+    );
 
-    // const allocatedRiders = data.riders;
-
-    // await Promise.all(
-    //   allocatedRiders.map(async (rider) => {
-    //     try {
-    //       await Rider.findByIdAndUpdate(rider.id, { tours: rider.tours });
-    //     } catch (e) {
-    //       console.log("Error in updating the riders");
-    //     }
-    //   })
-    // );
-
-    // const updatedRiders = await Rider.find();
+    const updatedRiders = await Rider.find();
 
     res.status(200).json({
       message: "Success",
@@ -409,6 +404,7 @@ const adminDetails = async (req, res, next) => {
         orderInRiders,
         requestBody,
         responseBody: response.data,
+        updatedRiders,
       },
     });
   } catch (e) {

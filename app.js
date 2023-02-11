@@ -14,6 +14,7 @@ const adminRouter = require("./routes/adminRoutes");
 const riderRouter = require("./routes/riderRoutes");
 const pickupRouter = require("./routes/pickupRoutes");
 const outputRouter = require("./routes/outputRoutes");
+const testRouter = require("./routes/testing");
 
 const app = express();
 
@@ -32,6 +33,7 @@ app.use("/api/v1/admin", adminRouter);
 app.use("/api/v1/rider", riderRouter);
 app.use("/api/v1/pickup", pickupRouter);
 app.use("/api/v1/output", outputRouter);
+app.use("/api/v1/test", testRouter);
 
 app.all("*", (req, res, next) => {
   next(new AppError(`Can't find ${req.originalUrl} on this server!`, 404));

@@ -40,18 +40,26 @@ const simulateForDuration = async (timeDuration) => {
                 break;
               }
             }
+          } else {
+            noOfOrdersRemoved++;
           }
         }
-        rider.headingTo = headingTo;
-        console.log({ riderID: rider._id, noOfOrdersRemoved, headingTo });
-        await rider.save();
+
+        if (noOfOrdersRemoved >= tour.length) {
+          tours.splice(0, 1);
+        }
       }
+      rider.headingTo = headingTo;
+      rider.tours = tours;
+      console.log({ riderID: rider._id, noOfOrdersRemoved, headingTo });
+      await rider.save();
     })
   );
 };
 
 const simulateForFirstHour = async (req, res, next) => {
-  await simulateForDuration(60 * 60);
+  const noOfHours = req.body.hours;
+  await simulateForDuration(noOfHours * 60 * 60);
   const riders = await Rider.find();
   res.status(200).json({ data: riders });
 };

@@ -240,6 +240,7 @@ const callAddPickupFunction = async (req, res, next) => {
 
     const depotIndex = orders.findIndex((order) => order.product === DEPOT_SKU);
     const depot = orders[depotIndex];
+    orders.splice(depotIndex, 1);
 
     const newOrders = await Order.find({
       type: "pickup",
@@ -262,28 +263,29 @@ const callAddPickupFunction = async (req, res, next) => {
 
     // console.log({ response });
 
-    // const allocatedRiders = response?.data?.riders;
+    const allocatedRiders = response?.data?.riders;
 
-    // await Promise.all(
-    //   allocatedRiders?.map(async (rider) => {
-    //     try {
-    //       await Rider.findByIdAndUpdate(rider.id, { tours: rider.tours });
-    //     } catch (e) {
-    //       console.log("Error in updating the riders");
-    //     }
-    //   })
-    // );
+    await Promise.all(
+      allocatedRiders?.map(async (rider) => {
+        try {
+          await Rider.findByIdAndUpdate(rider.id, { tours: rider.tours });
+        } catch (e) {
+          console.log("Error in updating the riders");
+        }
+      })
+    );
 
-    // const updatedRiders = await Rider.find();
+    const updatedRiders = await Rider.find();
 
     res.status(200).json({
       message: "Success",
       data: { request: requestBody, response: responseBody.data },
     });
   } catch (err) {
-    console.log({ err });
+    // console.log({ err });
     console.dir({ r: err?.response?.data }, { depth: null });
     res.status(500).json({
+      r: err?.response?.data,
       message: err.message,
       r: err.stack,
     });
