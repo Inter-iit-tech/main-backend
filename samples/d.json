@@ -1,0 +1,41 @@
+{
+  "message": "Success",
+  "data": {
+    "request": {
+      "riders": [
+        {
+          "id": "63e5e85582158e519576c0d3",
+          "vehicle": { "capacity": 640000 },
+          "tours": [
+            [
+              { "orderId": "63e5e6b082158e519576c052", "timing": "09:00:00" },
+              { "orderId": "63e5e91282158e519576c1bc", "timing": "00:40:01" },
+              { "orderId": "63e5e6b082158e519576c052", "timing": "00:05:40" }
+            ]
+          ],
+          "headingTo": "63e5e91282158e519576c1bc"
+        }
+      ],
+      "orders": [
+        {
+          "id": "63e5e91282158e519576c1bc",
+          "orderType": "delivery",
+          "point": { "longitude": 77.6392151, "latitude": 12.9506526 },
+          "expectedTime": "2 23:59:59",
+          "package": { "volume": 16053 }
+        }
+      ],
+      "newOrders": [
+        {
+          "id": "63e6125093939dcb61320608",
+          "orderType": "pickup",
+          "point": { "longitude": 77.63633109999999, "latitude": 12.9122542 },
+          "expectedTime": "0 23:59:59",
+          "package": { "volume": 2732 }
+        }
+      ],
+
+      "currentTime": "10:00:00"
+    }
+  }
+}
