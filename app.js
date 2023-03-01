@@ -27,6 +27,10 @@ app.use(fileUpload({ useTempFiles: true, tempFileDir: "/tmp/" }));
 
 app.use(middleware.requestLogger);
 
+app.get("/api/health", (req, res, next) => {
+  res.send("Health Check is working fine!");
+});
+
 //Input Endpoint
 app.use("/api/v1/input", inputRouter);
 app.use("/api/v1/admin", adminRouter);

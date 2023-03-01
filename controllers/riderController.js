@@ -172,4 +172,23 @@ const updateTokenId = catchAsync(async (req, res, next) => {
   });
 });
 
-module.exports = { getRiderDetailsOfTheDay, markOrderStatus, updateTokenId };
+/*
+  Function to update tokenId
+*/
+const loginById = catchAsync(async (req, res, next) => {
+  const { id } = req.params;
+
+  let rider = await Rider.findOne({ riderID: id });
+
+  if (!rider) {
+    // Create new rider
+    return next(new AppError("Rider not present", 404));
+  }
+
+  res.status(200).json({
+    status: "success",
+    rider: rider,
+  });
+});
+
+module.exports = { getRiderDetailsOfTheDay, markOrderStatus, updateTokenId , loginById };

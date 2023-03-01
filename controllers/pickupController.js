@@ -39,19 +39,19 @@ const convertAddressToGeocode = async (data) => {
       await Promise.all(
         array.map(async (order) => {
           try {
-            if (order.address) {
-              const geocodeResponse = await getGeocode(order.address);
+            if (order.addresses) {
+              const geocodeResponse = await getGeocode(order.addresses);
               order.location = geocodeResponse.result.location;
               correct++;
             } else {
               console.log(
-                `Address not present in the order details ${order.AWB}`
+                `Address not present in the order details ${order.awb}`
               );
             }
           } catch (err) {
             console.log(err.message);
             console.log(
-              `Cannot find address in the order details ${order.AWB}`
+              `Cannot find address in the order details ${order.awb}`
             );
             incorrect++;
           }
@@ -82,19 +82,21 @@ const getProductIDs = async (orders, addTime) => {
     await Promise.all(
       orders.map(async (pickup) => {
         try {
-          if (pickup.product) {
-            const { names, address, product, AWB, location } = pickup;
+          if (pickup.product_id) {
+            console.log({ pickup });
+
+            const { names, addresses, product_id, awb, location } = pickup;
 
             const estimatedTime = "0 23:59:59";
 
-            const dbProduct = await Product.findOne({ skuID: product });
+            const dbProduct = await Product.findOne({ skuID: product_id });
             const productID = dbProduct?._id;
 
             const orderObject = {
-              AWB,
+              AWB: awb,
               names,
-              address,
-              product,
+              address: addresses,
+              product: product_id,
               productID,
               estimatedTime,
               location,
@@ -111,7 +113,7 @@ const getProductIDs = async (orders, addTime) => {
 
             newOrders.push(newOrder);
           } else {
-            console.log(`Product ID is not in the order details ${pickup.AWB}`);
+            console.log(`Product ID is not in the order details ${pickup.awb}`);
           }
         } catch (err) {
           console.log(err);
@@ -233,6 +235,7 @@ const callAddPickupFunction = async (req, res, next) => {
     const orders = await Order.find({
       isDelivered: false,
       type: "delivery",
+      location: { $ne: null },
     }).populate({
       path: "productID",
       model: "Product",
@@ -245,6 +248,7 @@ const callAddPickupFunction = async (req, res, next) => {
     const newOrders = await Order.find({
       type: "pickup",
       addTime: addTime,
+      location: { $ne: null },
     }).populate({
       path: "productID",
       model: "Product",
@@ -252,11 +256,11 @@ const callAddPickupFunction = async (req, res, next) => {
 
     const requestBody = {
       ...formatRequestBodyToAddPickup(riders, orders, depot, newOrders),
-      currentTime: "10:00:00",
+      currentTime: addTime,
     };
 
     // Making request
-    const responseBody = await axios.post(
+    const response = await axios.post(
       `${baseUrl}/api/solve/addorder/`,
       requestBody
     );
@@ -279,7 +283,7 @@ const callAddPickupFunction = async (req, res, next) => {
 
     res.status(200).json({
       message: "Success",
-      data: { request: requestBody, response: responseBody.data },
+      data: { request: requestBody, response: response.data },
     });
   } catch (err) {
     // console.log({ err });

@@ -35,7 +35,9 @@ const getGeocode = async (address) => {
     const LNG_MAX = 79;
 
     // Set the first location in bounds as the approxResult
-    let approxResult;
+    // console.log({ r: gcResponse.data.results });
+    let approxResult = gcResponse.data.results[0];
+
     for (const result of gcResponse.data.results) {
       const { lat, lng } = result.geometry.location;
       if (LAT_MIN < lat && lat < LAT_MAX && LNG_MIN < lng && lng < LNG_MAX) {

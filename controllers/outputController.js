@@ -20,6 +20,7 @@ const convertToCSV = async (output) => {
     console.log("Written to the output file successfully");
   } catch (err) {
     console.log(err);
+    throw err;
   }
 };
 
@@ -35,7 +36,7 @@ const createOutput = async (req, res, next) => {
 
     const output = await Promise.all(riders.map(outputFormat));
 
-    await convertToCSV(output);
+    // await convertToCSV(output);
 
     res.status(200).json({ output });
   } catch (err) {
@@ -46,7 +47,10 @@ const createOutput = async (req, res, next) => {
 
 const outputFormat = async (rider) => {
   const tour = rider.tours?.[0];
-  const formattedOrders = await orderFormat(tour);
+  let formattedOrders = [];
+  if (tour !== null) {
+    formattedOrders = await orderFormat(tour);
+  }
   return {
     id: rider.riderID,
     orders: formattedOrders,
@@ -94,54 +98,58 @@ const generateOSRMUri = (orders) => {
 };
 
 const orderFormat = async (orders) => {
-  let formattedOrders = [
-    {
-      AWB: orders[0].orderId.AWB,
-      address: orders[0].orderId.address,
-      geocode: {
-        longitude: orders[0].orderId.location.lng,
-        latitude: orders[0].orderId.location.lat,
+  try {
+    let formattedOrders = [
+      {
+        AWB: orders?.[0]?.orderId.AWB,
+        address: orders?.[0]?.orderId.address,
+        geocode: {
+          longitude: orders?.[0]?.orderId.location.lng,
+          latitude: orders?.[0]?.orderId.location.lat,
+        },
+        geojson: "",
       },
-      geojson: "",
-    },
-  ];
+    ];
 
-  const pairedOrders = [];
+    const pairedOrders = [];
 
-  for (let i = 0; i < orders.length - 1; i++) {
-    pairedOrders.push([orders[i], orders[i + 1]]);
+    for (let i = 0; i < orders.length - 1; i++) {
+      pairedOrders.push([orders?.[i], orders?.[i + 1]]);
+    }
+
+    await Promise.all(
+      pairedOrders.map(async (pair, i) => {
+        try {
+          const OSRMUri = generateOSRMUri(pair);
+          const res = await axios.get(OSRMUri);
+          const encodedPolyline = res?.data?.routes?.[0]?.geometry;
+          console.log({ encodedPolyline });
+          pair.push(encodedPolyline);
+          // pair.push(OSRMUri);
+        } catch (e) {
+          console.error(e);
+          console.log(i, i + 1);
+        }
+      })
+    );
+
+    const simPaths = pairedOrders.map((pair) => {
+      return {
+        AWB: pair[1].orderId.AWB,
+        address: pair[1].orderId.address,
+        geocode: {
+          longitude: pair[1].orderId.location.lng,
+          latitude: pair[1].orderId.location.lat,
+        },
+        geojson: pair[2],
+      };
+    });
+
+    formattedOrders = formattedOrders.concat(simPaths);
+    return formattedOrders;
+  } catch (err) {
+    throw err;
   }
-
-  await Promise.all(
-    pairedOrders.map(async (pair, i) => {
-      try {
-        const OSRMUri = generateOSRMUri(pair);
-        const res = await axios.get(OSRMUri);
-        const encodedPolyline = res?.data?.routes?.[0]?.geometry;
-        console.log({ encodedPolyline });
-        pair.push(encodedPolyline);
-        // pair.push(OSRMUri);
-      } catch (e) {
-        console.error(e);
-        console.log(i, i + 1);
-      }
-    })
-  );
-
-  const simPaths = pairedOrders.map((pair) => {
-    return {
-      AWB: pair[1].orderId.AWB,
-      address: pair[1].orderId.address,
-      geocode: {
-        longitude: pair[1].orderId.location.lng,
-        latitude: pair[1].orderId.location.lat,
-      },
-      geojson: pair[2],
-    };
-  });
-
-  formattedOrders = formattedOrders.concat(simPaths);
-  return formattedOrders;
 };
 
 module.exports = { createOutput };

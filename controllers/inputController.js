@@ -138,6 +138,8 @@ const inputDeliveryPoints = catchAsync(async (req, res, next) => {
 
   let data = readExcelFile(file.tempFilePath);
 
+  // res.status(200).json({ data });
+
   data = await convertAddressToGeocode(data);
 
   await getProductIDs(data);
@@ -250,28 +252,28 @@ const inputProductDetails = catchAsync(async (req, res, next) => {
   });
 });
 
-const inputDummyProducts = catchAsync(async (req, res, next) => {
-  const file = req.files?.rawData;
+// const inputDummyProducts = catchAsync(async (req, res, next) => {
+//   const file = req.files?.rawData;
 
-  if (!file) {
-    return next(new AppError("File not found", 400));
-  }
+//   if (!file) {
+//     return next(new AppError("File not found", 400));
+//   }
 
-  const acceptedFileMimeTypes = [
-    "application/vnd.ms-excel",
-    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  ];
+//   const acceptedFileMimeTypes = [
+//     "application/vnd.ms-excel",
+//     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+//   ];
 
-  if (!acceptedFileMimeTypes.includes(file.mimetype)) {
-    return next(new AppError("Please select an Excel File", 400));
-  }
+//   if (!acceptedFileMimeTypes.includes(file.mimetype)) {
+//     return next(new AppError("Please select an Excel File", 400));
+//   }
 
-  const data = readExcelFile(file.tempFilePath);
+//   const data = readExcelFile(file.tempFilePath);
 
-  await Product.insertMany(data);
+//   await Product.insertMany(data);
 
-  res.status(200).json({ message: "Product inserted successfully" });
-});
+//   res.status(200).json({ message: "Product inserted successfully" });
+// });
 
 const inputRiderDetails = catchAsync(async (req, res, next) => {
   const file = req.files?.rawData;
@@ -352,10 +354,50 @@ const inputPickupDetails = async (req, res, next) => {
   }
 };
 
+const addAddress = async (req, res, next) => {
+  const location = req.body.location;
+  const orderId = req.body.orderID;
+
+  await Order.findByIdAndUpdate(orderId, { location });
+
+  res.status(200).json({ success: true });
+};
+
+const inputDummyProducts = catchAsync(async (req, res, next) => {
+  const file = req.files?.rawData;
+
+  if (!file) {
+    return next(new AppError("File not found", 400));
+  }
+
+  const acceptedFileMimeTypes = [
+    "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  ];
+
+  if (!acceptedFileMimeTypes.includes(file.mimetype)) {
+    return next(new AppError("Please select an Excel File", 400));
+  }
+
+  const data = readExcelFile(file.tempFilePath);
+
+  data.forEach(async (product) => {
+    await Product.findOneAndUpdate(
+      { skuID: product.skuID },
+      { volume: product.volume }
+    );
+  });
+
+  // await Product.insertMany(data);
+
+  res.status(200).json({ message: "Product inserted successfully" });
+});
+
 module.exports = {
   inputDeliveryPoints,
   inputProductDetails,
   inputDummyProducts,
   inputRiderDetails,
   inputDepotLocation,
+  addAddress,
 };

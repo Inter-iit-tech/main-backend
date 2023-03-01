@@ -112,7 +112,10 @@ const addPickup = catchAsync(async (req, res, next) => {
 
   const riders = await Rider.find();
 
-  const orders = await Order.find({ isDelivered: false }).populate({
+  const orders = await Order.find({
+    isDelivered: false,
+    location: { $ne: null },
+  }).populate({
     path: "productID",
     model: "Product",
   });
@@ -350,7 +353,10 @@ const formatRequestBodyToAddPickup = (
 const adminDetails = async (req, res, next) => {
   let requestBody;
   try {
-    const orders = await Order.find({ type: "delivery" }).populate({
+    const orders = await Order.find({
+      type: "delivery",
+      location: { $ne: null },
+    }).populate({
       path: "productID",
       select: "volume",
       model: "Product",
