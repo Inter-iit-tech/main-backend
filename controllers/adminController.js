@@ -291,7 +291,7 @@ const formatRequestBody = (dbRiders, dbOrders, depotLocation) => {
     return {
       id: dbRider._id,
       vehicle: {
-        capacity: Math.ceil(dbRider.totalBagVolume),
+        capacity: Math.ceil((dbRider.totalBagVolume??10000000)/100),
       },
       //TODO: Check if this has to be dynamic
       startTime: "09:00:00",
@@ -308,7 +308,7 @@ const formatRequestBody = (dbRiders, dbOrders, depotLocation) => {
     },
   };
 
-  const requestBody = { riders, orders, depot };
+  const requestBody = { riders, orders, depot,runtime:"00:01:00" };
   return requestBody;
 };
 
